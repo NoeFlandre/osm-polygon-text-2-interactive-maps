@@ -27,7 +27,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         repo_id=args.repo,
         repo_type="space",
         space_sdk="static",
-        private=True,
+        private=False,
         exist_ok=True,
     )
     api.upload_folder(
