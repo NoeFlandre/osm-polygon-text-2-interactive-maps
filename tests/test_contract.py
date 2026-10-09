@@ -37,7 +37,6 @@ PLACES = st.builds(
     osm_type=st.sampled_from(["way", "relation"]),
     osm_id=st.integers(min_value=1, max_value=10**12),
     name=st.text(max_size=40),
-    timestamp=st.sampled_from(["", "2024-01-02"]),
     area_m2=st.floats(min_value=0.0, max_value=1e9, allow_nan=False),
     tags=st.dictionaries(
         st.sampled_from(["landuse", "natural", "name"]),
