@@ -26,6 +26,8 @@ uv run landuse-map stats albania-latest --csv table.csv
 
 ## Build the Space site
 
+The site holds the five countries. Pass `--regions` to choose others.
+
 ```bash
 uv run landuse-map site site-out
 ```
