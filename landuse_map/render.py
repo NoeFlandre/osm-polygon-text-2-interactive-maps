@@ -23,7 +23,24 @@ FILL = "#0f766e"
 EDGE = "#134e4a"
 LABEL_TEXT = {YES: "yes", NO: "no", FAILED: "failed", SKIPPED: "not split"}
 PAGE_HEAD = (
-    "<title>Land-use map</title><style>html, body { margin: 0; height: 100%; }</style>"
+    "<title>Land-use map</title>"
+    "<style>"
+    "html, body { margin: 0; height: 100%; }"
+    ".leaflet-tooltip {"
+    " white-space: normal !important;"
+    " width: max-content;"
+    " opacity: 1 !important;"
+    " max-width: 320px;"
+    " padding: 8px 10px;"
+    " border: none;"
+    " border-radius: 8px;"
+    " box-shadow: 0 2px 8px rgba(0, 0, 0, .2);"
+    " font: 13px/1.4 system-ui, sans-serif;"
+    " color: #0f172a;"
+    "}"
+    ".leaflet-tooltip::before { display: none; }"
+    ".lu + .lu { margin-top: 8px; }"
+    "</style>"
 )
 
 
@@ -36,7 +53,7 @@ def map_document(places: list[Place]) -> str:
             shapely.geometry.mapping(place.geometry),
             style_function=_style,
             highlight_function=_highlight,
-            tooltip=folium.Tooltip(_tooltip_html(place)),
+            tooltip=_tooltip(place),
         ).add_to(fmap)
     if places:
         minx, miny, maxx, maxy = shapely.total_bounds([p.geometry for p in places])
@@ -77,6 +94,11 @@ def stats_markdown(sample: RegionSample) -> str:
     )
 
 
+def _tooltip(place: Place) -> folium.Tooltip | None:
+    html = _tooltip_html(place)
+    return None if html is None else folium.Tooltip(html)
+
+
 def _style(_feature: dict) -> dict:
     return {"fillColor": FILL, "color": EDGE, "weight": 1, "fillOpacity": 0.45}
 
@@ -85,22 +107,24 @@ def _highlight(_feature: dict) -> dict:
     return {"weight": 3, "fillOpacity": 0.75}
 
 
-def _tooltip_html(place: Place) -> str:
-    body = "".join(f"<div>{line}</div>" for line in _tooltip_lines(place))
-    return f'<div style="font:13px system-ui,sans-serif;max-width:340px;">{body}</div>'
+def _tooltip_html(place: Place) -> str | None:
+    """Return one label and text block per sentence, or None without a description."""
+    if place.description is None:
+        return None
+    blocks = "".join(
+        _sentence_block(s) for s in place.description.sentences if s.text.strip()
+    )
+    return f"<div>{blocks}</div>" if blocks else None
 
 
-def _tooltip_lines(place: Place) -> list[str]:
-    landuse = place.tags.get("landuse")
-    lines = [f"<b>landuse</b>: {escape(landuse)}"] if landuse else []
-    if place.description is not None:
-        lines.extend(_sentence_html(s) for s in place.description.sentences)
-    return lines or ["no description"]
-
-
-def _sentence_html(sentence: Sentence) -> str:
+def _sentence_block(sentence: Sentence) -> str:
     label = LABEL_TEXT.get(sentence.label, sentence.label)
-    return f"<b>{escape(label)}</b> {escape(sentence.text)}"
+    return (
+        '<div class="lu">'
+        f"<b>label</b>: {escape(label)}<br>"
+        f"<b>text</b>: {escape(sentence.text)}"
+        "</div>"
+    )
 
 
 def _pct(share: float) -> str:

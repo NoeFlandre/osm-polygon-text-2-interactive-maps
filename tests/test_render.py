@@ -18,6 +18,12 @@ from landuse_map.render import (
 REGION = "testland-latest"
 
 
+def tooltip(p: Place) -> str:
+    html = _tooltip_html(p)
+    assert html is not None
+    return html
+
+
 def place(**overrides) -> Place:
     fields = {
         "osm_type": "way",
@@ -48,35 +54,28 @@ def test_map_document_without_places_does_not_fit():
     assert "fitBounds" not in map_document([])
 
 
-def test_tooltip_shows_landuse_and_labeled_description():
+def test_tooltip_shows_the_label_and_text_of_each_sentence():
     farm = load_region(REGION).places[0]
-    html = _tooltip_html(farm)
-    assert "<b>landuse</b>: farmland" in html
-    assert "<b>yes</b> Fields of crops." in html
-    assert "<b>no</b> Cows graze." in html
+    html = tooltip(farm)
+    assert "<b>label</b>: yes<br><b>text</b>: Fields of crops." in html
+    assert "<b>label</b>: no<br><b>text</b>: Cows graze." in html
+    assert "landuse" not in html
+    assert "farmland" not in html
 
 
 def test_tooltip_omits_the_name_and_links():
-    html = _tooltip_html(load_region(REGION).places[0])
+    html = tooltip(load_region(REGION).places[0])
     assert "Farm" not in html
     assert "openstreetmap" not in html
 
 
-def test_tooltip_says_no_description_when_there_is_none():
-    assert _tooltip_html(place()) == (
-        '<div style="font:13px system-ui,sans-serif;max-width:340px;">'
-        "<div>no description</div></div>"
-    )
+def test_tooltip_is_absent_without_a_description():
+    assert _tooltip_html(place()) is None
 
 
 def test_tooltip_escapes_osm_text():
-    hostile = place(
-        tags={"landuse": "<img src=x>"},
-        texts=(Text("description", (Sentence("<b>bold</b>", YES),)),),
-    )
-    html = _tooltip_html(hostile)
-    assert "<img src=x>" not in html
-    assert "&lt;img src=x&gt;" in html
+    hostile = place(texts=(Text("description", (Sentence("<b>bold</b>", YES),)),))
+    html = tooltip(hostile)
     assert "<b>bold</b>" not in html
     assert "&lt;b&gt;bold&lt;/b&gt;" in html
 
@@ -85,12 +84,12 @@ def test_tooltip_uses_only_the_description_tag():
     other = place(
         texts=(Text("description:en", (Sentence("English text", YES),)),),
     )
-    assert "English text" not in _tooltip_html(other)
+    assert _tooltip_html(other) is None
 
 
 def test_tooltip_labels_unknown_values_by_their_code():
     odd = place(texts=(Text("description", (Sentence("word", "weird"),)),))
-    assert "<b>weird</b> word" in _tooltip_html(odd)
+    assert "<b>label</b>: weird<br><b>text</b>: word" in tooltip(odd)
 
 
 def test_summary_table_has_one_row_per_place():
@@ -159,7 +158,7 @@ def test_pct_rounds_to_whole_percent_and_marks_nan():
 def test_map_document_draws_polygons_with_the_fill_and_tooltip():
     doc = map_document(load_region(REGION).places)
     assert f'"fillColor": "{FILL}"' in doc
-    assert "<b>landuse</b>: farmland" in doc
+    assert "<b>label</b>: yes" in doc
     assert "Control scale" not in doc
     assert "L.control.scale" in doc
 
@@ -172,3 +171,31 @@ def test_polygon_style_and_highlight_values():
         "fillOpacity": 0.45,
     }
     assert _highlight({}) == {"weight": 3, "fillOpacity": 0.75}
+
+
+def test_tooltip_wraps_long_text_inside_the_page():
+    doc = map_document(load_region(REGION).places)
+    assert "white-space: normal !important;" in doc
+    assert "width: max-content;" in doc
+    assert "opacity: 1 !important;" in doc
+    assert "max-width: 320px;" in doc
+
+
+def test_tooltip_skips_empty_sentences():
+    gap = place(
+        texts=(
+            Text(
+                "description",
+                (Sentence("", NO), Sentence("Cows graze.", NO)),
+            ),
+        ),
+    )
+    html = tooltip(gap)
+    assert "<b>label</b>: no<br><b>text</b>: Cows graze." in html
+    assert html.count("<b>text</b>") == 1
+
+
+def test_tooltip_is_absent_when_every_sentence_is_empty():
+    assert (
+        _tooltip_html(place(texts=(Text("description", (Sentence(" ", NO),)),))) is None
+    )
