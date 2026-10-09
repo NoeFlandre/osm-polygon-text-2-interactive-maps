@@ -12,7 +12,6 @@ from landuse_map.data import (
     Place,
     Sentence,
     Text,
-    _date,
     _text_or,
     load_region,
 )
@@ -45,15 +44,13 @@ def test_polygon_without_labels_has_no_texts():
     assert forest.texts == ()
 
 
-def test_missing_name_and_timestamp_fall_back():
+def test_missing_name_falls_back():
     ruin = by_id(load_region(REGION).places)[2]
     assert ruin.name == "(unnamed)"
-    assert ruin.timestamp == ""
 
 
-def test_timestamp_and_osm_url():
+def test_osm_url():
     places = by_id(load_region(REGION).places)
-    assert places[1].timestamp == "2024-01-02"
     assert places[1].osm_url == "https://www.openstreetmap.org/way/1"
     assert places[3].osm_url == "https://www.openstreetmap.org/relation/3"
 
@@ -122,17 +119,11 @@ def test_text_or_returns_default_for_empty_or_missing_values():
     assert _text_or("kept", "fallback") == "kept"
 
 
-def test_date_gives_iso_day_and_blank_for_missing():
-    assert _date(pd.Timestamp("2024-01-02T10:00:00Z")) == "2024-01-02"
-    assert _date(pd.NaT) == ""
-
-
 def make_place(*texts: Text) -> Place:
     return Place(
         osm_type="way",
         osm_id=7,
         name="x",
-        timestamp="",
         area_m2=1.0,
         tags={},
         geometry=shapely.box(0, 0, 1, 1),
@@ -232,7 +223,6 @@ def test_dataset_revision_is_pinned_to_a_commit():
 
 
 def test_label_without_a_text_id_is_an_error():
-    import pandas as pd
 
     from landuse_map.data import _texts_by_place
 
@@ -259,7 +249,6 @@ def test_label_without_a_text_id_is_an_error():
 
 
 def test_label_for_an_unknown_text_is_an_error():
-    import pandas as pd
 
     from landuse_map.data import _texts_by_place
 
@@ -286,7 +275,6 @@ def test_label_for_an_unknown_text_is_an_error():
 
 
 def test_label_index_gap_is_an_error_not_a_shift():
-    import pandas as pd
 
     from landuse_map.data import _texts_by_place
 

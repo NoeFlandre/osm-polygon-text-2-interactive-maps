@@ -38,7 +38,6 @@ def place(*texts: Text, **overrides) -> Place:
         "osm_type": "way",
         "osm_id": 9,
         "name": "Test",
-        "timestamp": "2024-01-02",
         "area_m2": 1.0,
         "tags": {},
         "geometry": shapely.box(0, 0, 1, 1),

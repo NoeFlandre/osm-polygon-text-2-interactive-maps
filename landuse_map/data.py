@@ -50,7 +50,6 @@ class Place:
     osm_type: str
     osm_id: int
     name: str
-    timestamp: str
     area_m2: float
     tags: dict[str, str]
     geometry: BaseGeometry
@@ -176,7 +175,6 @@ def _place(row: Any, geometry: BaseGeometry, texts: Sequence[Text]) -> Place:
         osm_type=row["osm_type"],
         osm_id=int(row["osm_id"]),
         name=_text_or(row["name"], "(unnamed)"),
-        timestamp=_date(row["timestamp"]),
         area_m2=float(row["area_m2"]),
         tags={tag["key"]: _text_or(tag["value"], "") for tag in row["tags"]},
         geometry=geometry,
@@ -199,10 +197,6 @@ def _read(folder: str, region: str) -> pd.DataFrame:
 
 def _text_or(value: object, default: str) -> str:
     return value if isinstance(value, str) and value else default
-
-
-def _date(value: Any) -> str:
-    return "" if pd.isna(value) else value.date().isoformat()
 
 
 def _tag_rank(text: Text) -> int:
