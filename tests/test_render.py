@@ -276,3 +276,11 @@ def test_pct_rounds_to_whole_percent_and_marks_nan():
 def test_fixture_polygons_get_the_expected_categories():
     colors = Counter(_color(p) for p in load_region(REGION).places)
     assert colors == Counter({MIXED_COLOR: 1, NONE_COLOR: 2})
+
+
+def test_empty_table_keeps_its_header():
+    from landuse_map.render import TABLE_COLUMNS
+
+    table = summary_table([])
+    assert list(table.columns) == TABLE_COLUMNS
+    assert len(table) == 0

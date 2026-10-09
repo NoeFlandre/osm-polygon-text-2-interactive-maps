@@ -13,3 +13,14 @@ def page_data(doc: str) -> dict:
 def page_places(doc: str) -> list[dict]:
     """Return the polygon records of a page that shows one area."""
     return page_data(doc)["area"]["places"]
+
+
+def not_found_error():
+    """Return the error that Hugging Face raises for an unknown file or area."""
+    import httpx2
+    from huggingface_hub.errors import RemoteEntryNotFoundError
+
+    request = httpx2.Request("GET", "https://huggingface.co/missing")
+    return RemoteEntryNotFoundError(
+        "404", response=httpx2.Response(404, request=request)
+    )

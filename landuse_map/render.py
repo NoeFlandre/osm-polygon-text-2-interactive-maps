@@ -240,6 +240,20 @@ def area_json(payload: Mapping[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
+TABLE_COLUMNS = [
+    "name",
+    "type",
+    "area_m2",
+    "sentences",
+    "yes",
+    "no",
+    "failed",
+    "share_yes",
+    "landuse",
+    "osm",
+]
+
+
 def summary_table(places: list[Place]) -> pd.DataFrame:
     return pd.DataFrame(
         [
@@ -256,7 +270,8 @@ def summary_table(places: list[Place]) -> pd.DataFrame:
                 "osm": p.osm_url,
             }
             for p in places
-        ]
+        ],
+        columns=TABLE_COLUMNS,
     )
 
 
