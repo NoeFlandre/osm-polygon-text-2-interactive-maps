@@ -1,12 +1,16 @@
 # Deploy to a Hugging Face Space
 
-The Space runs `app.py` with Gradio. It installs `requirements.txt`, so keep it
-in sync with `pyproject.toml`:
+The Space is a static Space. It shows one page: the map. Static Spaces are free.
 
-```bash
-uv export --no-dev --no-hashes --no-emit-project -o requirements.txt
-```
+## Build and upload
 
-Then upload the repo files to the Space (`app.py`, `landuse_map/`,
-`requirements.txt`, `README.md`). The `README.md` front matter sets the Space
-SDK and entry point.
+1. Build the site:
+
+    ```bash
+    uv run landuse-map site site-out
+    ```
+
+2. Create a static Space on Hugging Face.
+3. Upload the files in `site-out/` to the Space.
+
+The file `site-out/README.md` sets the Space title and type.

@@ -1,25 +1,42 @@
 # Run locally
 
-Needs [uv](https://docs.astral.sh/uv/).
+You need [uv](https://docs.astral.sh/uv/).
+
+## Install
 
 ```bash
 uv sync
-uv run python app.py
 ```
 
-Open the printed URL. The first load downloads the sample parquet files from
-the Hugging Face Hub and caches them.
+## Build one map file
 
-## Checks
+```bash
+uv run landuse-map build albania-latest -o map.html
+```
+
+Open `map.html` in a browser.
+
+- Add `--sample 300` to show a random sample of 300 polygons.
+
+## Print region stats
+
+```bash
+uv run landuse-map stats albania-latest --csv table.csv
+```
+
+## Build the Space site
+
+```bash
+uv run landuse-map site site-out
+```
+
+Open `site-out/index.html` in a browser.
+
+## Check the code
 
 ```bash
 uv run ruff format .
 uv run ruff check .
 uv run ty check
-```
-
-## Docs
-
-```bash
-uv run mkdocs serve
+uv run pytest
 ```

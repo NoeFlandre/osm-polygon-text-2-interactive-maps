@@ -17,4 +17,5 @@ theme:
 nav:
   - Home: index.md
   - Run locally: run.md
-  - Deploy to Hugging Face Space: deploy.md
+  - Deploy to a Hugging Face Space: deploy.md
+  - Quality checks: quality.md

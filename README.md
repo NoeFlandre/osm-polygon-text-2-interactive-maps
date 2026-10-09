@@ -1,20 +1,20 @@
----
-title: OSM land-use map
-emoji: 🗺️
-colorFrom: green
-colorTo: teal
-sdk: gradio
-sdk_version: 6.30.0
-app_file: app.py
-pinned: false
-license: mit
----
-
 # OSM land-use map
 
-Interactive map of OpenStreetMap polygons with their text and land-use labels.
-Data: [osm-polygon-description-tag-landuse](https://huggingface.co/datasets/NoeFlandre/osm-polygon-description-tag-landuse) (ODbL).
+This project shows OpenStreetMap polygons on one map. Hover over a polygon to see its land-use label and its text.
 
-Run locally: `uv sync && uv run python app.py`. Docs: `uv run mkdocs serve`.
+The data comes from the Hugging Face dataset [osm-polygon-description-tag-landuse](https://huggingface.co/datasets/NoeFlandre/osm-polygon-description-tag-landuse). The dataset uses the ODbL license.
 
-MIT licensed, see [LICENSE](LICENSE).
+## Quick start
+
+```bash
+uv sync
+uv run landuse-map build albania-latest -o map.html
+```
+
+Open `map.html` in a browser.
+
+Read the full documentation with `uv run mkdocs serve`.
+
+## License
+
+The code uses the MIT license. See [LICENSE](LICENSE).

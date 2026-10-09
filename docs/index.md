@@ -1,19 +1,16 @@
 # OSM land-use map
 
-An interactive map of OpenStreetMap polygons. Each polygon shows its OSM text,
-the sentences in that text, and an LLM label for each sentence: *yes* if the
-sentence is relevant to land use, *no* if not.
+This project shows OpenStreetMap polygons on one map.
 
-- Pick a region (sample regions for now).
-- Colour polygons by share of *yes*, or by area.
-- Click a polygon for its text, tags and labels.
-- The table below the map lists the same polygons with counts.
+Hover over a polygon to see:
+
+- Its `landuse` tag, if it has one.
+- Its `description` text. Each sentence has a label: *yes* if the sentence is relevant for land use, *no* if it is not.
 
 ## Data
 
-Source: [`NoeFlandre/osm-polygon-description-tag-landuse`](https://huggingface.co/datasets/NoeFlandre/osm-polygon-description-tag-landuse)
-on Hugging Face. Labels and text are ODbL, like the OpenStreetMap input.
+Source: [`NoeFlandre/osm-polygon-description-tag-landuse`](https://huggingface.co/datasets/NoeFlandre/osm-polygon-description-tag-landuse) on Hugging Face. The labels and the text use the ODbL license, like the OpenStreetMap input.
 
 ## Code
 
-MIT licensed. See `LICENSE`.
+The code uses the MIT license. See `LICENSE`.
