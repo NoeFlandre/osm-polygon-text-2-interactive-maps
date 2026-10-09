@@ -183,3 +183,27 @@ def test_blank_sentences_are_neither_counted_nor_shown():
     assert spaced.count(YES) == 0
     assert spaced.count(NO) == 1
     assert [s.text for s in spaced.visible_sentences] == ["real"]
+
+
+class FakeEntry:
+    def __init__(self, path: str) -> None:
+        self.path = path
+
+
+def test_list_areas_names_every_parquet_file_in_data(monkeypatch):
+    from landuse_map import data
+
+    listed = [
+        FakeEntry("data/albania-latest.parquet"),
+        FakeEntry("data/us-alaska-latest.parquet"),
+        FakeEntry("data/README.md"),
+    ]
+
+    class FakeApi:
+        def list_repo_tree(self, repo_id, repo_type, path_in_repo):
+            assert repo_id == data.REPO_ID
+            assert path_in_repo == "data"
+            return listed
+
+    monkeypatch.setattr(data, "HfApi", FakeApi)
+    assert data.list_areas() == ["albania-latest", "us-alaska-latest"]
