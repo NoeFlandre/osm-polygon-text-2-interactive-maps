@@ -11,7 +11,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import sync_playwright
 
 from landuse_map.data import YES, load_region
-from landuse_map.render import _color
+from landuse_map.render import _color, _tooltip_html
 from landuse_map.site import build_site, display_name
 
 pytestmark = [pytest.mark.e2e, pytest.mark.network]
@@ -66,20 +66,31 @@ def open_site(playwright, url):
     return browser, page
 
 
+def expected_text(place):
+    """The tooltip text that the page should show for one polygon."""
+    import re
+
+    html = _tooltip_html(place)
+    return " ".join(re.sub(r"<[^>]+>", " ", html).split())
+
+
 def places_of(areas):
     return [p for area in areas for p in load_region(area).places]
 
 
 def test_every_polygon_and_marker_shows_text_on_hover(site_url):
-    expected = places_of(AREAS[:1])
+    expected_places = places_of(AREAS[:1])
     with sync_playwright() as p:
         browser, page = open_site(p, site_url)
         try:
             units = page.evaluate(UNITS_JS)
-            assert len(units) == len(expected)
+            assert len(units) == len(expected_places)
             assert [u for u in units if not u["text"]] == []
+            # Each hover text must match the text of its own polygon.
+            expected = [expected_text(q) for q in expected_places]
+            assert [u["text"] for u in units] == expected
             assert Counter(u["fill"] for u in units) == Counter(
-                _color(q) for q in expected
+                _color(q) for q in expected_places
             )
 
             silent = []

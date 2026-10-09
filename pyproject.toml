@@ -48,6 +48,7 @@ show_missing = true
 [tool.mutmut]
 paths_to_mutate = ["landuse_map/"]
 tests_dir = ["tests/"]
+also_copy = ["scripts/"]
 pytest_add_cli_args_test_selection = ["-m", "not e2e and not network"]
 
 [tool.ruff]

@@ -103,3 +103,33 @@ def test_unknown_area_prints_one_line_and_exits_with_2(monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "no area named 'nowhere-latest'" in err
     assert "Traceback" not in err
+
+
+def subcommand(name):
+    import argparse
+
+    parser = build_parser()
+    subs = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    return subs.choices[name]
+
+
+@pytest.mark.parametrize(
+    ("command", "text"),
+    [
+        ("root", "write one HTML page for one area"),
+        ("root", "print region summary and table"),
+        ("root", "write the static site for every area"),
+        ("build", "area id, for example albania-latest"),
+        ("build", "random sample of N polygons"),
+        ("stats", "also write the table as a CSV file"),
+        ("site", "directory for the site files"),
+        ("site", "most polygons per area"),
+    ],
+)
+def test_help_texts_are_what_users_read(command, text):
+    help_text = (
+        build_parser().format_help()
+        if command == "root"
+        else subcommand(command).format_help()
+    )
+    assert text in help_text

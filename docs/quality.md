@@ -6,7 +6,7 @@
 uv run pytest
 ```
 
-The tests use small fixture files. They do not download data.
+Most tests use small fixture files. The network tests read the dataset at the pinned revision `d52781f`.
 
 ## Coverage and CRAP score
 

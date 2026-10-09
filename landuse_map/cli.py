@@ -22,17 +22,17 @@ def positive_int(text: str) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="landuse-map",
-        description="Map OSM polygons with land-use labels.",  # pragma: no mutate
+        description="Map OSM polygons with land-use labels.",
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
     build = commands.add_parser(
         "build",
-        help="write one HTML page for one area",  # pragma: no mutate
+        help="write one HTML page for one area",
     )
     build.add_argument(
         "region",
-        help="area id, for example albania-latest",  # pragma: no mutate
+        help="area id, for example albania-latest",
     )
     build.add_argument("-o", "--output", type=Path, default=Path("map.html"))
     build.add_argument(
@@ -41,11 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     stats = commands.add_parser(
         "stats",
-        help="print region summary and table",  # pragma: no mutate
+        help="print region summary and table",
     )
     stats.add_argument(
         "region",
-        help="area id, for example albania-latest",  # pragma: no mutate
+        help="area id, for example albania-latest",
     )
     stats.add_argument(
         "--sample", type=positive_int, help="random sample of N polygons"
@@ -53,28 +53,28 @@ def build_parser() -> argparse.ArgumentParser:
     stats.add_argument(
         "--csv",
         type=Path,
-        help="also write the table as a CSV file",  # pragma: no mutate
+        help="also write the table as a CSV file",
     )
 
     site = commands.add_parser(
         "site",
-        help="write the static site for every area",  # pragma: no mutate
+        help="write the static site for every area",
     )
     site.add_argument(
         "output",
         type=Path,
-        help="directory for the site files",  # pragma: no mutate
+        help="directory for the site files",
     )
     site.add_argument(
         "--areas",
         nargs="+",
-        help="area ids to include, for example albania-latest (default: all)",  # pragma: no mutate
+        help="area ids to include, for example albania-latest (default: all)",
     )
     site.add_argument(
         "--sample",
         type=positive_int,
         default=MAX_POLYGONS,
-        help="most polygons per area",  # pragma: no mutate
+        help="most polygons per area",
     )
     return parser
 

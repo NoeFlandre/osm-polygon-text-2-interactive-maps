@@ -67,6 +67,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     table = rows(json.loads(args.coverage_json.read_text()), Path.cwd())
+    if not table:
+        print(f"no functions found under {SOURCE_DIR}/ in the report", file=sys.stderr)
+        return 2
     print("| CRAP | complexity | coverage | function |")
     print("|---:|---:|---:|---|")
     for row in table:
