@@ -8,7 +8,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable
 from html import escape
-from typing import Literal
+from typing import Literal, cast
 
 import folium
 import pandas as pd
@@ -21,6 +21,10 @@ ColorBy = Literal["share_yes", "area_m2"]
 # Light to dark green.
 RAMP = ("#f7fcb9", "#addd8e", "#31a354", "#00441b")
 NO_DATA = "#94a3b8"
+BASEMAP_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+BASEMAP_ATTR = (
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+)
 KEY_TAGS = ("landuse", "natural", "leisure", "amenity", "building", "place")
 _TAG_CSS = (
     "display:inline-block;background:#f1f5f9;border-radius:6px;"
@@ -46,21 +50,31 @@ def map_iframe(sample: RegionSample, color_by: ColorBy, height: int = 640) -> st
 
 
 def map_document(places: list[Place], color_by: ColorBy) -> str:
-    fmap = folium.Map(tiles="CartoDB positron", control_scale=True)
+    fmap = folium.Map(tiles=None, control_scale=True)
+    folium.TileLayer(
+        tiles=BASEMAP_URL,
+        attr=BASEMAP_ATTR,
+        name="Light",
+        max_zoom=20,
+    ).add_to(fmap)
     colour_of = _colour_scale(places, color_by)
     for place in places:
-        folium.GeoJson(
+        shape = folium.GeoJson(
             shapely.geometry.mapping(place.geometry),
             style_function=_style(colour_of(place)),
             highlight_function=lambda _feature: {"weight": 3, "fillOpacity": 0.85},
-            tooltip=folium.Tooltip(place.name),
-            popup=folium.Popup(_popup_html(place), max_width=460),
-        ).add_to(fmap)
+            tooltip=folium.Tooltip(escape(place.name)),
+        )
+        shape.add_child(folium.Popup(_popup_html(place), max_width=460))
+        shape.add_to(fmap)
     if places:
         minx, miny, maxx, maxy = shapely.total_bounds([p.geometry for p in places])
         fmap.fit_bounds([[miny, minx], [maxy, maxx]])
-    fmap.get_root().html.add_child(folium.Element(_legend(color_by)))
-    return fmap.get_root().render()
+    # Map children render inside the page's script block, so the legend goes on
+    # the page root to be visible.
+    root = cast(folium.Figure, fmap.get_root())
+    root.html.add_child(folium.Element(_legend(color_by)))
+    return root.render()
 
 
 def summary_table(places: list[Place]) -> pd.DataFrame:
@@ -134,30 +148,48 @@ def _rgb(hex_colour: str) -> tuple[int, int, int]:
 
 
 def _popup_html(place: Place) -> str:
-    key_tags = "".join(
-        f'<span style="{_TAG_CSS}">{escape(k)}={escape(place.tags[k])}</span>'
-        for k in KEY_TAGS
-        if k in place.tags
-    ) or '<span style="color:#64748b">no land-use tags</span>'
-    texts = "".join(_text_html(t) for t in place.texts) or (
-        '<div style="color:#64748b">No text.</div>'
-    )
     return (
         '<div style="font-family:system-ui,sans-serif;font-size:13px;'
         'line-height:1.45;color:#0f172a;">'
+        f"{_header_html(place)}"
+        f"{_counts_html(place)}"
+        f'<div style="margin-bottom:6px;">{_key_tags_html(place)}</div>'
+        f"{_texts_html(place)}</div>"
+    )
+
+
+def _header_html(place: Place) -> str:
+    return (
         f'<div style="font-size:16px;font-weight:650;">{escape(place.name)}</div>'
         f'<div style="color:#64748b;margin:2px 0 8px;">'
         f"{escape(place.osm_type)} · {place.area_m2:,.0f} m² · "
         f"{escape(place.timestamp)} · "
         f'<a href="{escape(place.osm_url)}" target="_blank" rel="noopener">'
         "OpenStreetMap ↗</a></div>"
+    )
+
+
+def _counts_html(place: Place) -> str:
+    return (
         f'<div style="margin-bottom:8px;">'
         f"<b>{place.count(YES)}</b> yes · <b>{place.count(NO)}</b> no · "
         f"<b>{place.count(FAILED)}</b> failed · "
         f"share yes <b>{_pct(place.share_yes)}</b></div>"
-        f'<div style="margin-bottom:6px;">{key_tags}</div>'
-        f"{texts}</div>"
     )
+
+
+def _key_tags_html(place: Place) -> str:
+    tags = "".join(
+        f'<span style="{_TAG_CSS}">{escape(k)}={escape(place.tags[k])}</span>'
+        for k in KEY_TAGS
+        if k in place.tags
+    )
+    return tags or '<span style="color:#64748b">no land-use tags</span>'
+
+
+def _texts_html(place: Place) -> str:
+    texts = "".join(_text_html(t) for t in place.texts)
+    return texts or '<div style="color:#64748b">No text.</div>'
 
 
 def _text_html(text: Text) -> str:

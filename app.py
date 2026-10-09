@@ -3,11 +3,11 @@
 import gradio as gr
 
 from landuse_map.data import load_region
-from landuse_map.render import map_iframe, stats_markdown, summary_table
+from landuse_map.render import ColorBy, map_iframe, stats_markdown, summary_table
 
 SAMPLE_REGIONS = ["albania-latest", "andorra-latest", "bermuda-latest"]
 SAMPLE_SIZE = 300
-COLOUR_CHOICES = {"Share of yes": "share_yes", "Area": "area_m2"}
+COLOUR_CHOICES: dict[str, ColorBy] = {"Share of yes": "share_yes", "Area": "area_m2"}
 
 INTRO = """# Land-use labels on OpenStreetMap polygons
 

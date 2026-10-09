@@ -12,7 +12,9 @@ import functools
 import math
 import random
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any, cast
 
 import pandas as pd
 import pyarrow.parquet as pq
@@ -86,43 +88,57 @@ def load_region(region: str, sample_size: int | None = None) -> RegionSample:
 @functools.cache
 def _read_region(region: str) -> tuple[Place, ...]:
     polygons = _read("data", region)
-    sources = _read("language-v1/data", region).set_index("description_identity")
-    labels = _read("labels/language-v1/data", region)
+    texts = _texts_by_place(
+        sources=_read("language-v1/data", region),
+        labels=_read("labels/language-v1/data", region),
+    )
+    geometries = shapely.from_wkb(polygons["geometry"].to_numpy())
+    return tuple(
+        _place(row, geometry, texts.get(_place_key(row), ()))
+        for row, geometry in zip(polygons.to_dict("records"), geometries, strict=True)
+    )
 
+
+def _texts_by_place(
+    sources: pd.DataFrame, labels: pd.DataFrame
+) -> dict[tuple[str, int], list[Text]]:
+    sources = sources.set_index("description_identity")
     texts: defaultdict[tuple[str, int], list[Text]] = defaultdict(list)
     grouped = labels.sort_values("sentence_index").groupby(
         ["description_identity", "tag_key"]
     )
-    for (identity, tag_key), rows in grouped:
+    for keys, rows in grouped:
+        identity, tag_key = cast(tuple[str, str], keys)
         source = sources.loc[identity]
-        # Unsplit texts have no sentence list: the whole text is one sentence.
-        pieces = list(source["sentences"]) or [source["original_text"]]
-        sentences = tuple(
-            Sentence(text=piece, label=decision)
-            for piece, decision in zip(pieces, rows["decision"], strict=False)
-        )
-        key = (source["osm_type"], int(source["osm_id"]))
-        texts[key].append(Text(tag_key=tag_key, sentences=sentences))
+        sentences = _sentences(source, rows["decision"])
+        texts[_place_key(source)].append(Text(tag_key=tag_key, sentences=sentences))
+    return texts
 
-    geometries = shapely.from_wkb(polygons["geometry"].to_numpy())
-    places = []
-    for row, geometry in zip(
-        polygons.itertuples(index=False), geometries, strict=True
-    ):
-        key = (row.osm_type, int(row.osm_id))
-        places.append(
-            Place(
-                osm_type=row.osm_type,
-                osm_id=int(row.osm_id),
-                name=_text_or(row.name, "(unnamed)"),
-                timestamp=_date(row.timestamp),
-                area_m2=float(row.area_m2),
-                tags={tag["key"]: _text_or(tag["value"], "") for tag in row.tags},
-                geometry=geometry,
-                texts=tuple(texts.get(key, ())),
-            )
-        )
-    return tuple(places)
+
+def _sentences(source: pd.Series, decisions: pd.Series) -> tuple[Sentence, ...]:
+    # Unsplit texts have no sentence list: the whole text is one sentence.
+    pieces = list(source["sentences"]) or [source["original_text"]]
+    return tuple(
+        Sentence(text=piece, label=decision)
+        for piece, decision in zip(pieces, decisions, strict=False)
+    )
+
+
+def _place_key(row: Any) -> tuple[str, int]:
+    return row["osm_type"], int(row["osm_id"])
+
+
+def _place(row: Any, geometry: BaseGeometry, texts: Sequence[Text]) -> Place:
+    return Place(
+        osm_type=row["osm_type"],
+        osm_id=int(row["osm_id"]),
+        name=_text_or(row["name"], "(unnamed)"),
+        timestamp=_date(row["timestamp"]),
+        area_m2=float(row["area_m2"]),
+        tags={tag["key"]: _text_or(tag["value"], "") for tag in row["tags"]},
+        geometry=geometry,
+        texts=tuple(texts),
+    )
 
 
 def _read(folder: str, region: str) -> pd.DataFrame:
