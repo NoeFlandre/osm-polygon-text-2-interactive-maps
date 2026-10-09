@@ -46,10 +46,9 @@ source = ["landuse_map"]
 show_missing = true
 
 [tool.mutmut]
-paths_to_mutate = ["landuse_map/"]
-tests_dir = ["tests/"]
+source_paths = ["landuse_map/"]
 also_copy = ["scripts/"]
-pytest_add_cli_args_test_selection = ["-m", "not e2e and not network"]
+pytest_add_cli_args_test_selection = ["tests/", "-m", "not e2e and not network"]
 
 [tool.ruff]
 extend-exclude = ["mutants"]
