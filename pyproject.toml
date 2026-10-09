@@ -13,8 +13,10 @@ dependencies = [
 [dependency-groups]
 dev = [
     "coverage>=7.16.2",
+    "hypothesis>=6.168.5",
     "mkdocs-material>=9.7.7",
     "mutmut>=3.8.0",
+    "playwright>=1.63.0",
     "pytest>=9.1.1",
     "radon>=6.0.1",
     "ruff>=0.16.10",
@@ -33,6 +35,10 @@ packages = ["landuse_map"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "network: needs Hugging Face access to the real dataset",
+    "e2e: opens the page in a browser",
+]
 
 [tool.coverage.run]
 source = ["landuse_map"]
@@ -43,6 +49,7 @@ show_missing = true
 [tool.mutmut]
 paths_to_mutate = ["landuse_map/"]
 tests_dir = ["tests/"]
+pytest_add_cli_args_test_selection = ["-m", "not e2e and not network"]
 
 [tool.ruff]
 extend-exclude = ["mutants"]

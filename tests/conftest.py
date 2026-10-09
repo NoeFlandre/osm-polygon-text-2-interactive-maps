@@ -129,8 +129,11 @@ LABEL_ROWS = [
 
 
 @pytest.fixture(autouse=True)
-def region_files(tmp_path, monkeypatch):
+def region_files(request, tmp_path, monkeypatch):
     """Serve three test tables instead of Hugging Face downloads."""
+    if request.node.get_closest_marker("network"):
+        yield
+        return
     tables = {
         f"data/{REGION}.parquet": (POLYGONS, POLYGON_ROWS),
         f"language-v1/data/{REGION}.parquet": (SOURCES, SOURCE_ROWS),
