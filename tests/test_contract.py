@@ -1,7 +1,6 @@
 """Property tests. Every polygon must show hover text, whatever its tags say."""
 
 import re
-from html import escape
 
 import shapely
 from helpers import page_places
@@ -13,6 +12,7 @@ from landuse_map.render import (
     CATEGORY_COLOR,
     _category,
     _color,
+    _sentence_block,
     _tooltip_html,
     map_document,
 )
@@ -84,7 +84,7 @@ def test_hover_text_contains_only_our_markup(place):
 def test_every_visible_sentence_is_shown_escaped(place):
     html = _tooltip_html(place)
     for sentence in place.visible_sentences:
-        assert escape(sentence.text) in html
+        assert _sentence_block(sentence) in html
 
 
 @FAST
