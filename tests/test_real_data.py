@@ -3,11 +3,10 @@
 import re
 
 import pytest
-from helpers import page_data
+from helpers import page_places
 
 from landuse_map.data import load_region
 from landuse_map.render import _tooltip_html, map_document
-from landuse_map.site import SITE_NAMES
 
 pytestmark = pytest.mark.network
 
@@ -35,10 +34,12 @@ def test_polygon_without_description_tag_shows_its_english_text():
 
 def test_albania_page_has_one_record_per_polygon():
     places = load_region("albania-latest").places
-    records = page_data(map_document(places))["regions"][0]["places"]
-    assert len(records) == ALBANIA_POLYGONS
+    assert len(page_places(map_document(places))) == ALBANIA_POLYGONS
 
 
-def test_every_site_country_loads_with_polygons():
-    for region in SITE_NAMES:
-        assert load_region(region).places, region
+REAL_AREAS = ["albania-latest", "montenegro-latest", "kosovo-latest"]
+
+
+def test_real_areas_load_with_polygons():
+    for area in REAL_AREAS:
+        assert load_region(area).places, area

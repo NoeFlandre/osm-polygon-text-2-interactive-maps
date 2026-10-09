@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -50,17 +51,23 @@ jobs:
         run: uv run python scripts/mutation_gate.py --min 80
 
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Building every area takes a long time, so this runs by hand only.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs: checks
+    timeout-minutes: 240
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - name: Install dependencies
         run: uv sync --locked
-      - name: Build the site
+      - name: Build the site for every area
         run: uv run landuse-map site site-out
       - name: Upload to the Hugging Face Space
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        if: env.HF_TOKEN != ''
         run: uv run python scripts/deploy_space.py site-out
+      - name: Explain a missing token
+        if: env.HF_TOKEN == ''
+        run: echo "HF_TOKEN is not set. The site was built but not uploaded."

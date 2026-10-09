@@ -151,6 +151,4 @@ def region_files(request, tmp_path, monkeypatch):
         return paths[filename]
 
     monkeypatch.setattr(data, "hf_hub_download", fake_download)
-    data._read_region.cache_clear()
     yield
-    data._read_region.cache_clear()

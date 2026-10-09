@@ -4,7 +4,7 @@ import re
 from html import escape
 
 import shapely
-from helpers import page_data
+from helpers import page_places
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
@@ -111,9 +111,9 @@ def test_category_follows_the_labels_shown(place):
 @SLOW
 @given(PLACES)
 def test_page_record_matches_the_place(place):
-    record = page_data(map_document([place]))["regions"][0]["places"][0]
+    record = page_places(map_document([place]))[0]
     assert record["color"] == _color(place)
     assert record["tip"] == _tooltip_html(place)
     assert record["yes"] == place.count(YES)
     assert record["no"] == place.count(NO)
-    assert record["area"] == place.area_m2
+    assert record["area"] == round(place.area_m2, 2)

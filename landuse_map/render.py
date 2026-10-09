@@ -1,7 +1,9 @@
-"""Render places as one interactive map, and as summary text and tables.
+"""Render places as one interactive page, and as summary text and tables.
 
-Public functions: `map_document`, `map_regions`, `summary_table`, `stats_markdown`.
-The map is one HTML page. Leaflet draws it. The page holds the data as JSON.
+Public functions: `map_document`, `site_page`, `area_payload`, `area_json`,
+`summary_table`, `stats_markdown`. The page is one HTML file. Leaflet draws
+it. The page reads the data of one area at a time, either inline or from a
+JSON file next to the page.
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from html import escape
+from typing import Any
 
 import pandas as pd
 import shapely
@@ -24,6 +27,9 @@ LEAFLET_CSS = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"
 LEAFLET_JS = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"
 HIT_RADIUS = 6
 HIT_OPACITY = 0.01
+# About 30 metres on the ground. Stored coordinates keep 1e-5 degrees (about 1 metre).
+SIMPLIFY_TOLERANCE = 3e-4
+COORD_DIGITS = 5
 NO_TEXT_HTML = "<div>no description text</div>"
 LABEL_TEXT = {YES: "yes", NO: "no", FAILED: "failed", SKIPPED: "not split"}
 
@@ -64,10 +70,17 @@ html, body { margin: 0; height: 100%; }
   padding: 10px 14px; box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
   font: 13px/1.4 system-ui, sans-serif; color: #0f172a;
 }
-.panel { top: 12px; left: 56px; width: 250px; }
-.panel .stats { display: flex; justify-content: space-between; margin-bottom: 8px; }
+.panel { top: 12px; left: 56px; width: 270px; }
+.panel label { display: block; margin-top: 6px; }
+.panel input[type=text], .panel input[type=search] {
+  box-sizing: border-box; width: 100%; padding: 5px 7px; font: inherit;
+  border: 1px solid #cbd5e1; border-radius: 6px;
+}
+.panel .stats { display: flex; justify-content: space-between; margin: 8px 0; }
 .panel .stats b { font-size: 16px; }
+.panel .status { color: #475569; min-height: 1.4em; }
 .panel input[type=range] { width: 100%; margin: 4px 0 0; }
+.panel.single .picker { display: none; }
 .legend { bottom: 36px; right: 12px; }
 .legend-title { font-weight: 600; margin-bottom: 4px; }
 .legend .row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
@@ -76,7 +89,14 @@ html, body { margin: 0; height: 100%; }
 </head>
 <body>
 <div id="map"></div>
-<div class="panel">
+<div class="panel" id="panel">
+  <div class="picker">
+    <label for="area-search">Area</label>
+    <input id="area-search" type="search" list="area-list" autocomplete="off"
+           placeholder="Type an area, for example Albania">
+    <datalist id="area-list"></datalist>
+  </div>
+  <div class="status" id="status"></div>
   <div class="stats">
     <div><b id="stat-polygons">0</b> polygons</div>
     <div><b id="stat-yes">0</b> yes labels</div>
@@ -92,68 +112,95 @@ __LEGEND__
 (function () {
   const map = L.map("map");
   L.tileLayer(DATA.basemap.url, { maxZoom: 20, attribution: DATA.basemap.attribution }).addTo(map);
-  if (DATA.bounds) { map.fitBounds(DATA.bounds); } else { map.setView([20, 0], 2); }
-
-  const units = [];
-  const overlays = {};
-  for (const region of DATA.regions) {
-    const group = L.layerGroup();
-    const regionUnits = [];
-    for (const place of region.places) {
-      const polygon = L.geoJSON({ type: "Feature", geometry: place.polygon, properties: {} }, {
-        style: { fillColor: place.color, color: place.color, weight: 1, fillOpacity: 0.5 },
-      });
-      const path = polygon.getLayers()[0];
-      path.bindTooltip(place.tip);
-      path.on("mouseover", () => path.setStyle({ weight: 3, fillOpacity: 0.75 }));
-      path.on("mouseout", () => path.setStyle({ weight: 1, fillOpacity: 0.5 }));
-      const marker = L.circleMarker(place.hit, {
-        radius: DATA.hit.radius, stroke: false, fill: true, fillOpacity: DATA.hit.opacity,
-      });
-      marker.bindTooltip(place.tip);
-      regionUnits.push({
-        group, polygon, path, marker, area: place.area, yes: place.yes, no: place.no,
-        color: place.color, tip: place.tip, region: region.name,
-      });
-    }
-    // Polygons first, then hit markers, so the markers sit on top.
-    for (const unit of regionUnits) { group.addLayer(unit.polygon); }
-    for (const unit of regionUnits) { group.addLayer(unit.marker); }
-    units.push(...regionUnits);
-    overlays[region.name] = group;
-    group.addTo(map);
-  }
-  L.control.layers(null, overlays, { collapsed: false, position: "topright" }).addTo(map);
-
+  map.setView([20, 0], 2);
+  const layer = L.layerGroup().addTo(map);
+  const status = document.getElementById("status");
   const slider = document.getElementById("min-area");
   const label = document.getElementById("min-area-label");
-  const maxArea = units.reduce((m, u) => Math.max(m, u.area), 1);
+  const search = document.getElementById("area-search");
+  const list = document.getElementById("area-list");
+  const count = (n) => n.toLocaleString("en-US");
+
+  let units = [];
+  let maxArea = 1;
+  let shownName = "";
+
   const thresholdFor = (value) => (Number(value) <= 0
     ? 0 : Math.pow(maxArea, Number(value) / Number(slider.max)));
-  const showArea = (m2) => (m2 < 10 ? m2.toFixed(1) : Math.round(m2).toLocaleString("en-US")) + " m²";
+  const showArea = (m2) => (m2 < 10 ? m2.toFixed(1) : count(Math.round(m2))) + " m²";
 
   const applyFilter = () => {
     const threshold = thresholdFor(slider.value);
     label.textContent = showArea(threshold);
+    layer.clearLayers();
     let polygons = 0, yes = 0, no = 0;
-    for (const u of units) {
-      const big = u.area >= threshold;
-      if (big && !u.group.hasLayer(u.polygon)) { u.group.addLayer(u.polygon); }
-      if (big && !u.group.hasLayer(u.marker)) { u.group.addLayer(u.marker); }
-      if (!big && u.group.hasLayer(u.polygon)) { u.group.removeLayer(u.polygon); }
-      if (!big && u.group.hasLayer(u.marker)) { u.group.removeLayer(u.marker); }
-      if (big && map.hasLayer(u.group)) { polygons += 1; yes += u.yes; no += u.no; }
-    }
-    document.getElementById("stat-polygons").textContent = polygons.toLocaleString("en-US");
-    document.getElementById("stat-yes").textContent = yes.toLocaleString("en-US");
-    document.getElementById("stat-no").textContent = no.toLocaleString("en-US");
+    const shown = units.filter((u) => u.area >= threshold);
+    // Polygons go first, so the hit markers sit on top of them.
+    for (const u of shown) { layer.addLayer(u.polygon); }
+    for (const u of shown) { layer.addLayer(u.marker); polygons += 1; yes += u.yes; no += u.no; }
+    document.getElementById("stat-polygons").textContent = count(polygons);
+    document.getElementById("stat-yes").textContent = count(yes);
+    document.getElementById("stat-no").textContent = count(no);
     return { polygons, yes, no, threshold };
   };
 
+  const makeUnit = (place) => {
+    const polygon = L.geoJSON({ type: "Feature", geometry: place.polygon, properties: {} }, {
+      style: { fillColor: place.color, color: place.color, weight: 1, fillOpacity: 0.5 },
+    });
+    const path = polygon.getLayers()[0];
+    path.bindTooltip(place.tip);
+    path.on("mouseover", () => path.setStyle({ weight: 3, fillOpacity: 0.75 }));
+    path.on("mouseout", () => path.setStyle({ weight: 1, fillOpacity: 0.5 }));
+    const marker = L.circleMarker(place.hit, {
+      radius: DATA.hit.radius, stroke: false, fill: true, fillOpacity: DATA.hit.opacity,
+    });
+    marker.bindTooltip(place.tip);
+    return { polygon, marker, area: place.area, yes: place.yes, no: place.no };
+  };
+
+  const draw = (area) => {
+    units = area.places.map(makeUnit);
+    maxArea = units.reduce((m, u) => Math.max(m, u.area), 1);
+    shownName = area.name;
+    if (area.bounds) { map.fitBounds(area.bounds); }
+    applyFilter();
+    status.textContent = area.name + ": " + count(area.places.length) + " of "
+      + count(area.total) + " polygons" + (area.places.length < area.total ? " (sample)" : "");
+  };
+
+  const load = (entry) => {
+    status.textContent = "Loading " + entry.name + "…";
+    fetch(entry.file)
+      .then((response) => {
+        if (!response.ok) { throw new Error(String(response.status)); }
+        return response.json();
+      })
+      .then(draw)
+      .catch(() => { status.textContent = "Could not load " + entry.name + "."; });
+  };
+
   slider.addEventListener("input", applyFilter);
-  map.on("overlayadd overlayremove", applyFilter);
-  applyFilter();
-  window.landuseApp = { map, units, slider, thresholdFor, applyFilter };
+
+  if (DATA.area) {
+    document.getElementById("panel").classList.add("single");
+    draw(DATA.area);
+  } else {
+    const byName = new Map(DATA.areas.map((entry) => [entry.name, entry]));
+    for (const entry of DATA.areas) {
+      const option = document.createElement("option");
+      option.value = entry.name;
+      list.appendChild(option);
+    }
+    search.addEventListener("change", () => {
+      const entry = byName.get(search.value.trim());
+      if (entry && entry.name !== shownName) { load(entry); }
+      if (!entry) { status.textContent = "Pick an area from the list."; }
+    });
+    search.value = DATA.start;
+    load(byName.get(DATA.start));
+  }
+  window.landuseApp = { map, layer, slider, thresholdFor, applyFilter, units: () => units };
 })();
 </script>
 </body>
@@ -161,34 +208,36 @@ __LEGEND__
 """
 
 
-def map_document(places: Sequence[Place]) -> str:
-    """Return one full-page map of one set of places."""
-    return map_regions({"polygons": places})
+def map_document(
+    places: Sequence[Place], name: str = "polygons", total: int | None = None
+) -> str:
+    """Return one page that shows one area. The data is inside the page."""
+    area = area_payload(name, places, len(places) if total is None else total)
+    return _page({"area": area, "areas": None, "start": None})
 
 
-def map_regions(regions: Mapping[str, Sequence[Place]]) -> str:
-    """Return one full-page map. Each named region is a layer the page can toggle.
+def site_page(areas: Sequence[Mapping[str, Any]], start: str) -> str:
+    """Return the site page. It lists the areas, and loads one at a time.
 
-    Hovering a polygon or its hit marker shows its label and text. The slider
-    hides polygons below a minimum area. The stats count the polygons shown.
+    Each entry holds `name`, `file` (a path next to the page), `total` and `shown`.
+    `start` is the area name that the page shows first.
     """
-    everything = [p for places in regions.values() for p in places]
-    data = {
-        "basemap": {"url": BASEMAP_URL, "attribution": BASEMAP_ATTR},
-        "bounds": _bounds(everything),
-        "hit": {"radius": HIT_RADIUS, "opacity": HIT_OPACITY},
-        "regions": [
-            {"name": name, "places": [_place_record(p) for p in places]}
-            for name, places in regions.items()
-        ],
+    return _page({"area": None, "areas": list(areas), "start": start})
+
+
+def area_payload(name: str, places: Sequence[Place], total: int) -> dict[str, Any]:
+    """Return the JSON-ready data for one area. `total` counts all its polygons."""
+    return {
+        "name": name,
+        "total": total,
+        "bounds": _bounds(places),
+        "places": [_place_record(p) for p in places],
     }
-    # Replace the data last. Its text must not be scanned for placeholders.
-    return (
-        PAGE.replace("__LEAFLET_CSS__", LEAFLET_CSS)
-        .replace("__LEAFLET_JS__", LEAFLET_JS)
-        .replace("__LEGEND__", _legend_html())
-        .replace("__DATA__", _json_for_script(data))
-    )
+
+
+def area_json(payload: Mapping[str, Any]) -> str:
+    """Return the area payload as compact JSON, for a file the page loads."""
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 def summary_table(places: list[Place]) -> pd.DataFrame:
@@ -222,6 +271,21 @@ def stats_markdown(sample: RegionSample) -> str:
     )
 
 
+def _page(data: dict[str, Any]) -> str:
+    data = {
+        "basemap": {"url": BASEMAP_URL, "attribution": BASEMAP_ATTR},
+        "hit": {"radius": HIT_RADIUS, "opacity": HIT_OPACITY},
+        **data,
+    }
+    # Replace the data last. Its text must not be scanned for placeholders.
+    return (
+        PAGE.replace("__LEAFLET_CSS__", LEAFLET_CSS)
+        .replace("__LEAFLET_JS__", LEAFLET_JS)
+        .replace("__LEGEND__", _legend_html())
+        .replace("__DATA__", _json_for_script(data))
+    )
+
+
 def _category(place: Place) -> str:
     yes, no = place.count(YES), place.count(NO)
     if yes and no:
@@ -237,18 +301,36 @@ def _color(place: Place) -> str:
     return CATEGORY_COLOR[_category(place)]
 
 
-def _place_record(place: Place) -> dict:
+def _place_record(place: Place) -> dict[str, Any]:
     """Return the JSON record that the page draws for one polygon."""
     point = place.geometry.representative_point()
     return {
-        "polygon": shapely.geometry.mapping(place.geometry),
-        "hit": [float(point.y), float(point.x)],
+        "polygon": _polygon_json(place.geometry),
+        "hit": [
+            round(float(point.y), COORD_DIGITS),
+            round(float(point.x), COORD_DIGITS),
+        ],
         "color": _color(place),
-        "area": float(place.area_m2),
+        "area": round(float(place.area_m2), 2),
         "yes": place.count(YES),
         "no": place.count(NO),
         "tip": _tooltip_html(place),
     }
+
+
+def _polygon_json(geometry: shapely.Geometry) -> dict[str, Any]:
+    """Return a simplified GeoJSON geometry with rounded coordinates."""
+    simplified = shapely.simplify(geometry, SIMPLIFY_TOLERANCE, preserve_topology=True)
+    if simplified.is_empty:
+        simplified = geometry
+    shape = shapely.geometry.mapping(simplified)
+    return {"type": shape["type"], "coordinates": _round_coords(shape["coordinates"])}
+
+
+def _round_coords(value: Any) -> Any:
+    if isinstance(value, (list, tuple)):
+        return [_round_coords(item) for item in value]
+    return round(float(value), COORD_DIGITS)
 
 
 def _bounds(places: Sequence[Place]) -> list[list[float]] | None:

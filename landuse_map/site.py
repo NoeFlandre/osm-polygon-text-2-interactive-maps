@@ -1,20 +1,26 @@
-"""Static site: one page with a map of several countries. Runs on a free Hugging Face static Space."""
+"""Static site: one page that shows any area of the dataset.
+
+The site runs on a free Hugging Face static Space. The page lists every area.
+It loads the data of one area at a time from a JSON file next to the page.
+"""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Any
 
-from landuse_map.data import load_region
-from landuse_map.render import map_regions
+from landuse_map.data import list_areas, load_region
+from landuse_map.render import area_json, area_payload, site_page
 
-SITE_NAMES = {
-    "albania-latest": "Albania",
-    "montenegro-latest": "Montenegro",
-    "kosovo-latest": "Kosovo",
-    "macedonia-latest": "North Macedonia",
-    "bosnia-herzegovina-latest": "Bosnia and Herzegovina",
+# Most polygons kept per area. Larger areas are sampled, and the page says so.
+MAX_POLYGONS = 10000
+START_AREA = "albania-latest"
+NAME_OVERRIDES = {
+    "bosnia-herzegovina": "Bosnia and Herzegovina",
+    "macedonia": "North Macedonia",
 }
+ABBREVIATIONS = {"us", "uk"}
 
 SPACE_README = """---
 title: OSM land-use map
@@ -26,26 +32,64 @@ pinned: false
 license: mit
 ---
 
-Hover over a polygon to see its land-use labels and text.
-Use the layer list on the map to show or hide a country.
+Pick an area in the panel. Hover over a polygon to see its land-use labels and text.
+The slider hides polygons below a chosen area.
 
 Data: [osm-polygon-description-tag-landuse](https://huggingface.co/datasets/NoeFlandre/osm-polygon-description-tag-landuse) (ODbL).
 """
 
 
-def display_name(region: str) -> str:
-    """Return the country name for a region, for example "montenegro-latest"."""
-    fallback = region.removesuffix("-latest").replace("-", " ").title()
-    return SITE_NAMES.get(region, fallback)
+def display_name(area: str) -> str:
+    """Return an English name for an area id, for example "us-alaska-latest"."""
+    slug = area.removesuffix("-latest")
+    if slug in NAME_OVERRIDES:
+        return NAME_OVERRIDES[slug]
+    words = [
+        w.upper() if w in ABBREVIATIONS else w.capitalize() for w in slug.split("-")
+    ]
+    return " ".join(words)
 
 
-def build_site(out: Path, regions: Sequence[str] = tuple(SITE_NAMES)) -> Path:
-    """Write index.html (the map) and the Space README. Return the map path."""
-    out.mkdir(parents=True, exist_ok=True)
+def build_site(
+    out: Path,
+    areas: Sequence[str] | None = None,
+    sample_size: int | None = MAX_POLYGONS,
+    progress: Callable[[str], None] | None = None,
+) -> Path:
+    """Write index.html, one JSON file per area, and the Space README.
+
+    `areas` defaults to every area in the dataset. Return the page path.
+    """
+    names = list(list_areas() if areas is None else areas)
+    if not names:
+        raise ValueError("no areas to build")
+    data_dir = out / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    entries = [_write_area(data_dir, area, sample_size, progress) for area in names]
+    entries.sort(key=lambda entry: entry["name"])
+    start = display_name(START_AREA if START_AREA in names else names[0])
     page = out / "index.html"
-    layers: Mapping[str, list] = {
-        display_name(region): load_region(region).places for region in regions
-    }
-    page.write_text(map_regions(layers), encoding="utf-8")
+    page.write_text(site_page(entries, start), encoding="utf-8")
     (out / "README.md").write_text(SPACE_README, encoding="utf-8")
     return page
+
+
+def _write_area(
+    data_dir: Path,
+    area: str,
+    sample_size: int | None,
+    progress: Callable[[str], None] | None,
+) -> dict[str, Any]:
+    """Write the data file of one area. Return its entry for the site page."""
+    sample = load_region(area, sample_size=sample_size)
+    name = display_name(area)
+    payload = area_payload(name, sample.places, sample.total)
+    (data_dir / f"{area}.json").write_text(area_json(payload), encoding="utf-8")
+    if progress is not None:
+        progress(f"{name}: {len(sample.places):,} of {sample.total:,} polygons")
+    return {
+        "name": name,
+        "file": f"data/{area}.json",
+        "total": sample.total,
+        "shown": len(sample.places),
+    }
