@@ -30,3 +30,9 @@ uv run mutmut results
 ```
 
 The report lists the changes that the tests did not catch.
+
+## Gates in CI
+
+- Every function must have a CRAP score below 6.
+- At least 80 percent of mutants must be killed.
+- CLI help text is excluded from mutation tests. It has no logic.
