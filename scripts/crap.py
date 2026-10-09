@@ -1,7 +1,7 @@
-"""CRAP score per function: complexity^2 * (1 - coverage)^3 + complexity.
+"""CRAP score for each function: complexity^2 * (1 - coverage)^3 + complexity.
 
-Complexity comes from radon (cyclomatic), coverage from a coverage.py JSON
-report. Usage:
+Complexity comes from radon (cyclomatic complexity). Coverage comes from a
+coverage.py JSON report. Usage:
 
     uv run coverage run -m pytest
     uv run coverage json -o coverage.json
@@ -35,7 +35,7 @@ class Row:
 
 
 def functions(source: str) -> Iterator[tuple[str, int, int, int]]:
-    """Yield (name, first line, last line, complexity) per function or method."""
+    """Yield (name, first line, last line, complexity) for each function or method."""
     for block in cc_visit(source):
         if not isinstance(block, Function):
             continue
@@ -61,7 +61,9 @@ def rows(report: dict, root: Path) -> list[Row]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("coverage_json", type=Path)
-    parser.add_argument("--below", type=float, help="exit 1 unless every CRAP < N")
+    parser.add_argument(
+        "--below", type=float, help="exit 1 unless every CRAP score is below N"
+    )
     args = parser.parse_args(argv)
 
     table = rows(json.loads(args.coverage_json.read_text()), Path.cwd())

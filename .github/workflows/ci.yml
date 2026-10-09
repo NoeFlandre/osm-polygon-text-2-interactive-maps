@@ -1,0 +1,64 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Check formatting
+        run: uv run ruff format --check .
+      - name: Lint
+        run: uv run ruff check .
+      - name: Type check
+        run: uv run ty check
+      - name: Tests with coverage
+        run: |
+          uv run coverage run -m pytest -q
+          uv run coverage report
+          uv run coverage json -o coverage.json
+      - name: CRAP score must be below 6
+        run: uv run python scripts/crap.py coverage.json --below 6
+      - name: Build docs
+        run: uv run mkdocs build --strict
+
+  mutation:
+    runs-on: ubuntu-latest
+    needs: checks
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Run mutation tests
+        run: uv run mutmut run
+      - name: Export stats
+        run: uv run mutmut export-cicd-stats
+      - name: Mutation score gate
+        run: uv run python scripts/mutation_gate.py --min 80
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: checks
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Build the site
+        run: uv run landuse-map site site-out
+      - name: Upload to the Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: uv run python scripts/deploy_space.py site-out
