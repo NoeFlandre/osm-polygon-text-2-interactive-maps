@@ -25,6 +25,13 @@ BASEMAP_ATTR = (
 )
 LEAFLET_CSS = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"
 LEAFLET_JS = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"
+# Subresource integrity hashes for the pinned files. A changed file fails to load.
+LEAFLET_CSS_SRI = (
+    "sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H"
+)
+LEAFLET_JS_SRI = (
+    "sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH"
+)
 HIT_RADIUS = 6
 HIT_OPACITY = 0.01
 # About 30 metres on the ground. Stored coordinates keep 1e-5 degrees (about 1 metre).
@@ -53,7 +60,7 @@ PAGE = """<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Land-use map</title>
-<link rel="stylesheet" href="__LEAFLET_CSS__">
+<link rel="stylesheet" href="__LEAFLET_CSS__" integrity="__LEAFLET_CSS_SRI__" crossorigin="">
 <style>
 html, body { margin: 0; height: 100%; }
 #map { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
@@ -106,12 +113,14 @@ html, body { margin: 0; height: 100%; }
   <input id="min-area" type="range" min="0" max="1000" step="1" value="0">
 </div>
 __LEGEND__
-<script src="__LEAFLET_JS__"></script>
+<script src="__LEAFLET_JS__" integrity="__LEAFLET_JS_SRI__" crossorigin=""></script>
 <script>const DATA = __DATA__;</script>
 <script>
 (function () {
   const map = L.map("map");
-  L.tileLayer(DATA.basemap.url, { maxZoom: 20, attribution: DATA.basemap.attribution }).addTo(map);
+  L.tileLayer(DATA.basemap.url, {
+    maxZoom: 20, maxNativeZoom: 19, attribution: DATA.basemap.attribution,
+  }).addTo(map);
   map.setView([20, 0], 2);
   const layer = L.layerGroup().addTo(map);
   const status = document.getElementById("status");
@@ -237,7 +246,9 @@ def area_payload(name: str, places: Sequence[Place], total: int) -> dict[str, An
 
 def area_json(payload: Mapping[str, Any]) -> str:
     """Return the area payload as compact JSON, for a file the page loads."""
-    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+    )
 
 
 TABLE_COLUMNS = [
@@ -295,7 +306,9 @@ def _page(data: dict[str, Any]) -> str:
     # Replace the data last. Its text must not be scanned for placeholders.
     return (
         PAGE.replace("__LEAFLET_CSS__", LEAFLET_CSS)
+        .replace("__LEAFLET_CSS_SRI__", LEAFLET_CSS_SRI)
         .replace("__LEAFLET_JS__", LEAFLET_JS)
+        .replace("__LEAFLET_JS_SRI__", LEAFLET_JS_SRI)
         .replace("__LEGEND__", _legend_html())
         .replace("__DATA__", _json_for_script(data))
     )
@@ -357,7 +370,8 @@ def _bounds(places: Sequence[Place]) -> list[list[float]] | None:
 
 def _json_for_script(data: object) -> str:
     """Return JSON that is safe inside a script tag."""
-    text = json.dumps(data, ensure_ascii=False)
+    # allow_nan=False: a NaN or Infinity in the data stops the build.
+    text = json.dumps(data, ensure_ascii=False, allow_nan=False)
     return (
         text.replace("&", "\\u0026")
         .replace("<", "\\u003c")
