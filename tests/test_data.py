@@ -1,12 +1,14 @@
 import math
 
 import pandas as pd
+import shapely
 
 from landuse_map.data import (
     FAILED,
     NO,
     SKIPPED,
     YES,
+    Place,
     Sentence,
     Text,
     _date,
@@ -66,7 +68,7 @@ def test_share_yes_counts_only_yes_and_no():
     farm = by_id(load_region(REGION).places)[1]
     assert farm.count(YES) == 1
     assert farm.count(NO) == 1
-    assert farm.count(SKIPPED) == 1
+    assert farm.count(SKIPPED) == 0
     assert farm.share_yes == 0.5
 
 
@@ -80,7 +82,7 @@ def test_region_sample_counts_each_label():
     assert sample.count(YES) == 1
     assert sample.count(NO) == 1
     assert sample.count(FAILED) == 1
-    assert sample.count(SKIPPED) == 1
+    assert sample.count(SKIPPED) == 0
 
 
 def test_sample_draws_that_many_places_reproducibly():
@@ -124,8 +126,60 @@ def test_date_gives_iso_day_and_blank_for_missing():
     assert _date(pd.NaT) == ""
 
 
-def test_description_is_the_description_tag_text():
-    places = by_id(load_region(REGION).places)
-    assert places[1].description == places[1].texts[0]
-    assert places[2].description == Text("description", (Sentence("Ruin", FAILED),))
-    assert places[3].description is None
+def make_place(*texts: Text) -> Place:
+    return Place(
+        osm_type="way",
+        osm_id=7,
+        name="x",
+        timestamp="",
+        area_m2=1.0,
+        tags={},
+        geometry=shapely.box(0, 0, 1, 1),
+        texts=tuple(texts),
+    )
+
+
+def test_shown_text_is_the_description_tag():
+    farm = by_id(load_region(REGION).places)[1]
+    assert farm.shown_text == farm.texts[0]
+    assert by_id(load_region(REGION).places)[3].shown_text is None
+
+
+def test_shown_text_falls_back_to_english_then_other_variants():
+    german = Text("description:de", (Sentence("Deutsch", YES),))
+    english = Text("description:en", (Sentence("English", NO),))
+    assert make_place(german, english).shown_text == english
+    assert make_place(german).shown_text == german
+
+
+def test_shown_text_prefers_description_over_its_variants():
+    local = Text("description", (Sentence("Local", YES),))
+    english = Text("description:en", (Sentence("English", NO),))
+    assert make_place(english, local).shown_text == local
+
+
+def test_shown_text_skips_blank_variants():
+    blank = Text("description", (Sentence("  ", YES),))
+    english = Text("description:en", (Sentence("English", NO),))
+    assert make_place(blank, english).shown_text == english
+
+
+def test_no_shown_text_without_a_visible_sentence():
+    assert make_place().shown_text is None
+    assert make_place(Text("name", (Sentence("", YES),))).shown_text is None
+
+
+def test_counts_use_only_the_shown_text_not_its_translations():
+    translated = make_place(
+        Text("description", (Sentence("a", YES),)),
+        Text("description:en", (Sentence("b", YES), Sentence("c", NO))),
+    )
+    assert translated.count(YES) == 1
+    assert translated.count(NO) == 0
+
+
+def test_blank_sentences_are_neither_counted_nor_shown():
+    spaced = make_place(Text("description", (Sentence(" ", YES), Sentence("real", NO))))
+    assert spaced.count(YES) == 0
+    assert spaced.count(NO) == 1
+    assert [s.text for s in spaced.visible_sentences] == ["real"]

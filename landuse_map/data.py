@@ -58,12 +58,22 @@ class Place:
         return f"https://www.openstreetmap.org/{self.osm_type}/{self.osm_id}"
 
     def count(self, label: str) -> int:
-        return sum(s.label == label for t in self.texts for s in t.sentences)
+        return sum(s.label == label for s in self.visible_sentences)
 
     @property
-    def description(self) -> Text | None:
-        """The text of the OSM `description` tag, or None when there is none."""
-        return next((t for t in self.texts if t.tag_key == "description"), None)
+    def shown_text(self) -> Text | None:
+        """The text that the map shows and counts.
+
+        Use `description`. Otherwise use the first other description variant
+        that has a non-blank sentence. Return None when no text exists.
+        """
+        ranked = sorted(self.texts, key=_tag_rank)
+        return next((t for t in ranked if _visible_sentences(t)), None)
+
+    @property
+    def visible_sentences(self) -> tuple[Sentence, ...]:
+        text = self.shown_text
+        return () if text is None else _visible_sentences(text)
 
     @property
     def share_yes(self) -> float:
@@ -160,3 +170,11 @@ def _text_or(value: object, default: str) -> str:
 
 def _date(value: Any) -> str:
     return "" if pd.isna(value) else value.date().isoformat()
+
+
+def _tag_rank(text: Text) -> int:
+    return {"description": 0, "description:en": 1}.get(text.tag_key, 2)
+
+
+def _visible_sentences(text: Text) -> tuple[Sentence, ...]:
+    return tuple(s for s in text.sentences if s.text.strip())

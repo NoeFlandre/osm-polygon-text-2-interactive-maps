@@ -1,12 +1,17 @@
 import math
+from collections import Counter
 
 import pandas as pd
 import shapely
 
 from landuse_map.data import NO, YES, Place, RegionSample, Sentence, Text, load_region
 from landuse_map.render import (
-    FILL,
-    _highlight,
+    CATEGORY_COLOR,
+    CATEGORY_NAME,
+    NO_TEXT_HTML,
+    _category,
+    _color,
+    _legend_html,
     _pct,
     _style,
     _tooltip_html,
@@ -16,15 +21,13 @@ from landuse_map.render import (
 )
 
 REGION = "testland-latest"
+YES_COLOR = CATEGORY_COLOR["yes"]
+NO_COLOR = CATEGORY_COLOR["no"]
+MIXED_COLOR = CATEGORY_COLOR["mixed"]
+NONE_COLOR = CATEGORY_COLOR["none"]
 
 
-def tooltip(p: Place) -> str:
-    html = _tooltip_html(p)
-    assert html is not None
-    return html
-
-
-def place(**overrides) -> Place:
+def place(*texts: Text, **overrides) -> Place:
     fields = {
         "osm_type": "way",
         "osm_id": 9,
@@ -33,10 +36,14 @@ def place(**overrides) -> Place:
         "area_m2": 1.0,
         "tags": {},
         "geometry": shapely.box(0, 0, 1, 1),
-        "texts": (),
+        "texts": tuple(texts),
     }
     fields.update(overrides)
     return Place(**fields)
+
+
+def only(label: str, text: str = "a sentence") -> Place:
+    return place(Text("description", (Sentence(text, label),)))
 
 
 def test_map_document_is_one_full_page_map():
@@ -54,42 +61,107 @@ def test_map_document_without_places_does_not_fit():
     assert "fitBounds" not in map_document([])
 
 
+def test_map_document_draws_one_polygon_and_one_hit_marker_per_place():
+    places = load_region(REGION).places
+    doc = map_document(places)
+    assert doc.count("L.geoJson(") == len(places)
+    assert doc.count("L.circleMarker(") == len(places)
+
+
 def test_tooltip_shows_the_label_and_text_of_each_sentence():
-    farm = load_region(REGION).places[0]
-    html = tooltip(farm)
+    html = _tooltip_html(load_region(REGION).places[0])
     assert "<b>label</b>: yes<br><b>text</b>: Fields of crops." in html
     assert "<b>label</b>: no<br><b>text</b>: Cows graze." in html
-    assert "landuse" not in html
     assert "farmland" not in html
 
 
-def test_tooltip_omits_the_name_and_links():
-    html = tooltip(load_region(REGION).places[0])
-    assert "Farm" not in html
-    assert "openstreetmap" not in html
-
-
-def test_tooltip_is_absent_without_a_description():
-    assert _tooltip_html(place()) is None
-
-
 def test_tooltip_escapes_osm_text():
-    hostile = place(texts=(Text("description", (Sentence("<b>bold</b>", YES),)),))
-    html = tooltip(hostile)
+    hostile = only(YES, "<b>bold</b>")
+    html = _tooltip_html(hostile)
     assert "<b>bold</b>" not in html
     assert "&lt;b&gt;bold&lt;/b&gt;" in html
 
 
-def test_tooltip_uses_only_the_description_tag():
-    other = place(
-        texts=(Text("description:en", (Sentence("English text", YES),)),),
-    )
-    assert _tooltip_html(other) is None
-
-
 def test_tooltip_labels_unknown_values_by_their_code():
-    odd = place(texts=(Text("description", (Sentence("word", "weird"),)),))
-    assert "<b>label</b>: weird<br><b>text</b>: word" in tooltip(odd)
+    odd = only("weird", "word")
+    assert "<b>label</b>: weird<br><b>text</b>: word" in _tooltip_html(odd)
+
+
+def test_tooltip_skips_empty_sentences():
+    gap = place(Text("description", (Sentence("", NO), Sentence("Cows graze.", NO))))
+    html = _tooltip_html(gap)
+    assert html.count("<b>text</b>") == 1
+    assert "Cows graze." in html
+
+
+def test_tooltip_says_no_description_text_when_there_is_none():
+    assert _tooltip_html(place()) == NO_TEXT_HTML
+    assert "no description text" in _tooltip_html(place())
+
+
+def test_tooltip_uses_a_description_variant_when_the_tag_is_missing():
+    english = Text("description:en", (Sentence("English text", YES),))
+    assert "English text" in _tooltip_html(place(english))
+
+
+def test_tooltip_prefers_description_over_its_variants():
+    english = Text("description:en", (Sentence("English", NO),))
+    local = Text("description", (Sentence("Local", YES),))
+    html = _tooltip_html(place(english, local))
+    assert "Local" in html
+    assert "English" not in html
+
+
+def test_category_yes_only_no_only_and_mixed_and_none():
+    assert _category(only(YES)) == "yes"
+    assert _category(only(NO)) == "no"
+    assert (
+        _category(place(Text("description", (Sentence("a", YES), Sentence("b", NO)))))
+        == "mixed"
+    )
+    assert _category(place()) == "none"
+    assert _category(only("failed")) == "none"
+
+
+def test_category_colors_are_four_distinct_colors():
+    colors = [YES_COLOR, NO_COLOR, MIXED_COLOR, NONE_COLOR]
+    assert len(set(colors)) == 4
+    assert _color(only(YES)) == YES_COLOR
+    assert _color(only(NO)) == NO_COLOR
+    assert (
+        _color(place(Text("description", (Sentence("a", YES), Sentence("b", NO)))))
+        == MIXED_COLOR
+    )
+    assert _color(place()) == NONE_COLOR
+
+
+def test_map_document_uses_the_category_color_of_each_polygon():
+    assert f'"fillColor": "{YES_COLOR}"' in map_document([only(YES)])
+    assert f'"fillColor": "{NO_COLOR}"' in map_document([only(NO)])
+
+
+def test_legend_lists_every_category_with_its_color():
+    legend = _legend_html()
+    assert "Polygon color" in legend
+    for key, name in CATEGORY_NAME.items():
+        assert name in legend
+        assert CATEGORY_COLOR[key] in legend
+    assert "yes and no" in legend
+
+
+def test_map_document_contains_the_legend():
+    doc = map_document([only(YES)])
+    assert "Polygon color" in doc
+    assert "only yes" in doc and "only no" in doc
+
+
+def test_polygon_style_values():
+    assert _style(YES_COLOR)({}) == {
+        "fillColor": YES_COLOR,
+        "color": YES_COLOR,
+        "weight": 1,
+        "fillOpacity": 0.5,
+    }
 
 
 def test_summary_table_has_one_row_per_place():
@@ -112,7 +184,7 @@ def test_summary_table_has_one_row_per_place():
 def test_summary_table_values():
     table = summary_table(load_region(REGION).places)
     farm = table[table.osm == "https://www.openstreetmap.org/way/1"].iloc[0]
-    assert (farm.yes, farm.no, farm.failed, farm.sentences) == (1, 1, 0, 3)
+    assert (farm.yes, farm.no, farm.failed, farm.sentences) == (1, 1, 0, 2)
     assert farm.share_yes == 0.5
     assert farm.landuse == "farmland"
     ruin = table[table.osm == "https://www.openstreetmap.org/way/2"].iloc[0]
@@ -122,13 +194,11 @@ def test_summary_table_values():
 
 def test_summary_table_rounds_share_and_area():
     third = place(
-        area_m2=1466.487,
-        texts=(
-            Text(
-                "description",
-                (Sentence("a", YES), Sentence("b", NO), Sentence("c", NO)),
-            ),
+        Text(
+            "description",
+            (Sentence("a", YES), Sentence("b", NO), Sentence("c", NO)),
         ),
+        area_m2=1466.487,
     )
     row = summary_table([third]).iloc[0]
     assert row.share_yes == 0.333
@@ -155,47 +225,24 @@ def test_pct_rounds_to_whole_percent_and_marks_nan():
     assert _pct(math.nan) == "–"
 
 
-def test_map_document_draws_polygons_with_the_fill_and_tooltip():
-    doc = map_document(load_region(REGION).places)
-    assert f'"fillColor": "{FILL}"' in doc
-    assert "<b>label</b>: yes" in doc
-    assert "Control scale" not in doc
-    assert "L.control.scale" in doc
+def test_fixture_polygons_get_the_expected_categories():
+    colors = Counter(_color(p) for p in load_region(REGION).places)
+    assert colors == Counter({MIXED_COLOR: 1, NONE_COLOR: 2})
 
 
-def test_polygon_style_and_highlight_values():
-    assert _style({}) == {
-        "fillColor": FILL,
-        "color": "#134e4a",
-        "weight": 1,
-        "fillOpacity": 0.45,
-    }
+def test_highlight_values():
+    from landuse_map.render import _highlight
+
     assert _highlight({}) == {"weight": 3, "fillOpacity": 0.75}
 
 
-def test_tooltip_wraps_long_text_inside_the_page():
-    doc = map_document(load_region(REGION).places)
-    assert "white-space: normal !important;" in doc
-    assert "width: max-content;" in doc
-    assert "opacity: 1 !important;" in doc
-    assert "max-width: 320px;" in doc
+def test_hit_markers_are_small_and_nearly_transparent():
+    doc = map_document([only(YES)])
+    assert '"radius": 6' in doc
+    assert '"fillOpacity": 0.01' in doc
 
 
-def test_tooltip_skips_empty_sentences():
-    gap = place(
-        texts=(
-            Text(
-                "description",
-                (Sentence("", NO), Sentence("Cows graze.", NO)),
-            ),
-        ),
-    )
-    html = tooltip(gap)
-    assert "<b>label</b>: no<br><b>text</b>: Cows graze." in html
-    assert html.count("<b>text</b>") == 1
-
-
-def test_tooltip_is_absent_when_every_sentence_is_empty():
-    assert (
-        _tooltip_html(place(texts=(Text("description", (Sentence(" ", NO),)),))) is None
-    )
+def test_legend_has_one_swatch_per_category_color():
+    legend = _legend_html()
+    for color in CATEGORY_COLOR.values():
+        assert legend.count(color) == 1

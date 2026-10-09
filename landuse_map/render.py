@@ -6,6 +6,7 @@ Public functions: `map_document`, `summary_table`, `stats_markdown`.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from html import escape
 from typing import cast
 
@@ -19,9 +20,24 @@ BASEMAP_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 BASEMAP_ATTR = (
     '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
 )
-FILL = "#0f766e"
-EDGE = "#134e4a"
+HIT_RADIUS = 6
+HIT_OPACITY = 0.01
+NO_TEXT_HTML = "<div>no description text</div>"
 LABEL_TEXT = {YES: "yes", NO: "no", FAILED: "failed", SKIPPED: "not split"}
+
+# Polygon color by category. The legend lists these in this order.
+CATEGORY_NAME = {
+    "yes": "only yes",
+    "no": "only no",
+    "mixed": "yes and no",
+    "none": "no yes or no label",
+}
+CATEGORY_COLOR = {
+    "yes": "#0f766e",
+    "no": "#ea580c",
+    "mixed": "#7c3aed",
+    "none": "#94a3b8",
+}
 PAGE_HEAD = (
     "<title>Land-use map</title>"
     "<style>"
@@ -29,8 +45,8 @@ PAGE_HEAD = (
     ".leaflet-tooltip {"
     " white-space: normal !important;"
     " width: max-content;"
-    " opacity: 1 !important;"
     " max-width: 320px;"
+    " opacity: 1 !important;"
     " padding: 8px 10px;"
     " border: none;"
     " border-radius: 8px;"
@@ -51,15 +67,28 @@ def map_document(places: list[Place]) -> str:
     for place in places:
         folium.GeoJson(
             shapely.geometry.mapping(place.geometry),
-            style_function=_style,
+            style_function=_style(_color(place)),
             highlight_function=_highlight,
-            tooltip=_tooltip(place),
+            tooltip=folium.Tooltip(_tooltip_html(place)),
+        ).add_to(fmap)
+    # Hit markers go on top of all polygons. Each one sits at a point inside its
+    # polygon, so a tiny polygon can still be hovered.
+    for place in places:
+        point = place.geometry.representative_point()
+        folium.CircleMarker(
+            location=(point.y, point.x),
+            radius=HIT_RADIUS,
+            stroke=False,
+            fill=True,
+            fill_opacity=HIT_OPACITY,
+            tooltip=folium.Tooltip(_tooltip_html(place)),
         ).add_to(fmap)
     if places:
         minx, miny, maxx, maxy = shapely.total_bounds([p.geometry for p in places])
         fmap.fit_bounds([[miny, minx], [maxy, maxx]])
     root = cast(folium.Figure, fmap.get_root())
     root.header.add_child(folium.Element(PAGE_HEAD))
+    root.html.add_child(folium.Element(_legend_html()))
     return root.render()
 
 
@@ -70,7 +99,7 @@ def summary_table(places: list[Place]) -> pd.DataFrame:
                 "name": p.name,
                 "type": p.osm_type,
                 "area_m2": round(p.area_m2),
-                "sentences": sum(len(t.sentences) for t in p.texts),
+                "sentences": len(p.visible_sentences),
                 "yes": p.count(YES),
                 "no": p.count(NO),
                 "failed": p.count(FAILED),
@@ -94,27 +123,36 @@ def stats_markdown(sample: RegionSample) -> str:
     )
 
 
-def _tooltip(place: Place) -> folium.Tooltip | None:
-    html = _tooltip_html(place)
-    return None if html is None else folium.Tooltip(html)
+def _category(place: Place) -> str:
+    yes, no = place.count(YES), place.count(NO)
+    if yes and no:
+        return "mixed"
+    if yes:
+        return "yes"
+    if no:
+        return "no"
+    return "none"
 
 
-def _style(_feature: dict) -> dict:
-    return {"fillColor": FILL, "color": EDGE, "weight": 1, "fillOpacity": 0.45}
+def _color(place: Place) -> str:
+    return CATEGORY_COLOR[_category(place)]
+
+
+def _style(color: str) -> Callable[[dict], dict]:
+    def style(_feature: dict) -> dict:
+        return {"fillColor": color, "color": color, "weight": 1, "fillOpacity": 0.5}
+
+    return style
 
 
 def _highlight(_feature: dict) -> dict:
     return {"weight": 3, "fillOpacity": 0.75}
 
 
-def _tooltip_html(place: Place) -> str | None:
-    """Return one label and text block per sentence, or None without a description."""
-    if place.description is None:
-        return None
-    blocks = "".join(
-        _sentence_block(s) for s in place.description.sentences if s.text.strip()
-    )
-    return f"<div>{blocks}</div>" if blocks else None
+def _tooltip_html(place: Place) -> str:
+    """Return the tooltip HTML for one polygon. It is never empty."""
+    blocks = "".join(_sentence_block(s) for s in place.visible_sentences)
+    return f"<div>{blocks}</div>" if blocks else NO_TEXT_HTML
 
 
 def _sentence_block(sentence: Sentence) -> str:
@@ -124,6 +162,24 @@ def _sentence_block(sentence: Sentence) -> str:
         f"<b>label</b>: {escape(label)}<br>"
         f"<b>text</b>: {escape(sentence.text)}"
         "</div>"
+    )
+
+
+def _legend_html() -> str:
+    rows = "".join(
+        '<div style="display:flex;align-items:center;gap:8px;margin:3px 0;">'
+        f'<span style="display:inline-block;width:14px;height:14px;border-radius:3px;'
+        f'background:{CATEGORY_COLOR[key]};"></span>'
+        f"<span>{escape(name)}</span></div>"
+        for key, name in CATEGORY_NAME.items()
+    )
+    return (
+        '<div class="legend" style="position:fixed;top:24px;right:24px;z-index:9999;'
+        "background:#fff;padding:10px 12px;border-radius:10px;"
+        "box-shadow:0 2px 8px rgba(0,0,0,.2);"
+        'font:13px/1.4 system-ui,sans-serif;color:#0f172a;">'
+        '<div style="font-weight:600;margin-bottom:4px;">Polygon color</div>'
+        f"{rows}</div>"
     )
 
 
