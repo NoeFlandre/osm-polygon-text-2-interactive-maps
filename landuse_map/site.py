@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Any
 
 from landuse_map.data import list_areas, load_region
 from landuse_map.render import area_json, area_payload, site_page
@@ -64,27 +65,31 @@ def build_site(
         raise ValueError("no areas to build")
     data_dir = out / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
-
-    entries = []
-    for area in names:
-        sample = load_region(area, sample_size=sample_size)
-        name = display_name(area)
-        payload = area_payload(name, sample.places, sample.total)
-        (data_dir / f"{area}.json").write_text(area_json(payload), encoding="utf-8")
-        entries.append(
-            {
-                "name": name,
-                "file": f"data/{area}.json",
-                "total": sample.total,
-                "shown": len(sample.places),
-            }
-        )
-        if progress is not None:
-            progress(f"{name}: {len(sample.places):,} of {sample.total:,} polygons")
-
+    entries = [_write_area(data_dir, area, sample_size, progress) for area in names]
     entries.sort(key=lambda entry: entry["name"])
     start = display_name(START_AREA if START_AREA in names else names[0])
     page = out / "index.html"
     page.write_text(site_page(entries, start), encoding="utf-8")
     (out / "README.md").write_text(SPACE_README, encoding="utf-8")
     return page
+
+
+def _write_area(
+    data_dir: Path,
+    area: str,
+    sample_size: int | None,
+    progress: Callable[[str], None] | None,
+) -> dict[str, Any]:
+    """Write the data file of one area. Return its entry for the site page."""
+    sample = load_region(area, sample_size=sample_size)
+    name = display_name(area)
+    payload = area_payload(name, sample.places, sample.total)
+    (data_dir / f"{area}.json").write_text(area_json(payload), encoding="utf-8")
+    if progress is not None:
+        progress(f"{name}: {len(sample.places):,} of {sample.total:,} polygons")
+    return {
+        "name": name,
+        "file": f"data/{area}.json",
+        "total": sample.total,
+        "shown": len(sample.places),
+    }
