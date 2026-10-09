@@ -1,10 +1,13 @@
 """Checks on the real albania data. These need Hugging Face access."""
 
+import re
+
 import pytest
+from helpers import page_data
 
 from landuse_map.data import load_region
 from landuse_map.render import _tooltip_html, map_document
-from landuse_map.site import SITE_REGION
+from landuse_map.site import SITE_NAMES
 
 pytestmark = pytest.mark.network
 
@@ -13,27 +16,29 @@ NO_DESCRIPTION_TAG = "https://www.openstreetmap.org/way/725870010"
 
 
 def visible(html: str) -> str:
-    import re
-
     return re.sub(r"<[^>]+>", "", html).strip()
 
 
 def test_albania_has_all_its_polygons():
-    assert len(load_region(SITE_REGION).places) == ALBANIA_POLYGONS
+    assert len(load_region("albania-latest").places) == ALBANIA_POLYGONS
 
 
 def test_every_albania_polygon_has_visible_hover_text():
-    for place in load_region(SITE_REGION).places:
+    for place in load_region("albania-latest").places:
         assert visible(_tooltip_html(place)), place.osm_url
 
 
 def test_polygon_without_description_tag_shows_its_english_text():
-    places = {p.osm_url: p for p in load_region(SITE_REGION).places}
+    places = {p.osm_url: p for p in load_region("albania-latest").places}
     assert "paragliding takeoff" in _tooltip_html(places[NO_DESCRIPTION_TAG])
 
 
-def test_albania_map_has_one_polygon_and_hit_marker_each():
-    places = load_region(SITE_REGION).places
-    doc = map_document(places)
-    assert doc.count("L.geoJson(") == ALBANIA_POLYGONS
-    assert doc.count("L.circleMarker(") == ALBANIA_POLYGONS
+def test_albania_page_has_one_record_per_polygon():
+    places = load_region("albania-latest").places
+    records = page_data(map_document(places))["regions"][0]["places"]
+    assert len(records) == ALBANIA_POLYGONS
+
+
+def test_every_site_country_loads_with_polygons():
+    for region in SITE_NAMES:
+        assert load_region(region).places, region

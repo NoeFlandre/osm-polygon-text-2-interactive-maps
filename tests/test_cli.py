@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from landuse_map.cli import build_parser, main
-from landuse_map.site import SITE_REGION
+from landuse_map.site import SITE_NAMES
 
 REGION = "testland-latest"
 
@@ -57,16 +57,16 @@ def test_stats_defaults():
 
 def test_site_writes_the_space_files(tmp_path, capsys):
     out = tmp_path / "site"
-    assert main(["site", str(out), "--region", REGION]) == 0
+    assert main(["site", str(out), "--regions", REGION]) == 0
     assert (out / "index.html").exists()
     assert (out / "README.md").exists()
     expected = f"wrote {out / 'index.html'} and {out / 'README.md'}"
     assert expected in capsys.readouterr().out
 
 
-def test_site_defaults_to_the_site_region():
+def test_site_defaults_to_the_site_regions():
     args = build_parser().parse_args(["site", "out"])
-    assert args.region == SITE_REGION
+    assert args.regions == list(SITE_NAMES)
 
 
 def test_a_command_is_required():

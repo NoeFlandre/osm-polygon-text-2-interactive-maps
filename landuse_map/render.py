@@ -1,16 +1,16 @@
 """Render places as one interactive map, and as summary text and tables.
 
-Public functions: `map_document`, `summary_table`, `stats_markdown`.
+Public functions: `map_document`, `map_regions`, `summary_table`, `stats_markdown`.
+The map is one HTML page. Leaflet draws it. The page holds the data as JSON.
 """
 
 from __future__ import annotations
 
+import json
 import math
-from collections.abc import Callable
+from collections.abc import Mapping, Sequence
 from html import escape
-from typing import cast
 
-import folium
 import pandas as pd
 import shapely
 
@@ -20,6 +20,8 @@ BASEMAP_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 BASEMAP_ATTR = (
     '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
 )
+LEAFLET_CSS = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"
+LEAFLET_JS = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"
 HIT_RADIUS = 6
 HIT_OPACITY = 0.01
 NO_TEXT_HTML = "<div>no description text</div>"
@@ -38,58 +40,155 @@ CATEGORY_COLOR = {
     "mixed": "#7c3aed",
     "none": "#94a3b8",
 }
-PAGE_HEAD = (
-    "<title>Land-use map</title>"
-    "<style>"
-    "html, body { margin: 0; height: 100%; }"
-    ".leaflet-tooltip {"
-    " white-space: normal !important;"
-    " width: max-content;"
-    " max-width: 320px;"
-    " opacity: 1 !important;"
-    " padding: 8px 10px;"
-    " border: none;"
-    " border-radius: 8px;"
-    " box-shadow: 0 2px 8px rgba(0, 0, 0, .2);"
-    " font: 13px/1.4 system-ui, sans-serif;"
-    " color: #0f172a;"
-    "}"
-    ".leaflet-tooltip::before { display: none; }"
-    ".lu + .lu { margin-top: 8px; }"
-    "</style>"
-)
+
+PAGE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Land-use map</title>
+<link rel="stylesheet" href="__LEAFLET_CSS__">
+<style>
+html, body { margin: 0; height: 100%; }
+#map { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
+.leaflet-tooltip {
+  white-space: normal !important; width: max-content; max-width: 320px;
+  opacity: 1 !important; padding: 8px 10px; border: none; border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
+  font: 13px/1.4 system-ui, sans-serif; color: #0f172a;
+}
+.leaflet-tooltip::before { display: none; }
+.lu + .lu { margin-top: 8px; }
+.panel, .legend {
+  position: absolute; z-index: 1000; background: #fff; border-radius: 10px;
+  padding: 10px 14px; box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
+  font: 13px/1.4 system-ui, sans-serif; color: #0f172a;
+}
+.panel { top: 12px; left: 56px; width: 250px; }
+.panel .stats { display: flex; justify-content: space-between; margin-bottom: 8px; }
+.panel .stats b { font-size: 16px; }
+.panel input[type=range] { width: 100%; margin: 4px 0 0; }
+.legend { bottom: 36px; right: 12px; }
+.legend-title { font-weight: 600; margin-bottom: 4px; }
+.legend .row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+.legend .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="panel">
+  <div class="stats">
+    <div><b id="stat-polygons">0</b> polygons</div>
+    <div><b id="stat-yes">0</b> yes labels</div>
+    <div><b id="stat-no">0</b> no labels</div>
+  </div>
+  <label for="min-area">Smallest area shown: <b id="min-area-label">0 m²</b></label>
+  <input id="min-area" type="range" min="0" max="1000" step="1" value="0">
+</div>
+__LEGEND__
+<script src="__LEAFLET_JS__"></script>
+<script>const DATA = __DATA__;</script>
+<script>
+(function () {
+  const map = L.map("map");
+  L.tileLayer(DATA.basemap.url, { maxZoom: 20, attribution: DATA.basemap.attribution }).addTo(map);
+  if (DATA.bounds) { map.fitBounds(DATA.bounds); } else { map.setView([20, 0], 2); }
+
+  const units = [];
+  const overlays = {};
+  for (const region of DATA.regions) {
+    const group = L.layerGroup();
+    const regionUnits = [];
+    for (const place of region.places) {
+      const polygon = L.geoJSON({ type: "Feature", geometry: place.polygon, properties: {} }, {
+        style: { fillColor: place.color, color: place.color, weight: 1, fillOpacity: 0.5 },
+      });
+      const path = polygon.getLayers()[0];
+      path.bindTooltip(place.tip);
+      path.on("mouseover", () => path.setStyle({ weight: 3, fillOpacity: 0.75 }));
+      path.on("mouseout", () => path.setStyle({ weight: 1, fillOpacity: 0.5 }));
+      const marker = L.circleMarker(place.hit, {
+        radius: DATA.hit.radius, stroke: false, fill: true, fillOpacity: DATA.hit.opacity,
+      });
+      marker.bindTooltip(place.tip);
+      regionUnits.push({
+        group, polygon, path, marker, area: place.area, yes: place.yes, no: place.no,
+        color: place.color, tip: place.tip, region: region.name,
+      });
+    }
+    // Polygons first, then hit markers, so the markers sit on top.
+    for (const unit of regionUnits) { group.addLayer(unit.polygon); }
+    for (const unit of regionUnits) { group.addLayer(unit.marker); }
+    units.push(...regionUnits);
+    overlays[region.name] = group;
+    group.addTo(map);
+  }
+  L.control.layers(null, overlays, { collapsed: false, position: "topright" }).addTo(map);
+
+  const slider = document.getElementById("min-area");
+  const label = document.getElementById("min-area-label");
+  const maxArea = units.reduce((m, u) => Math.max(m, u.area), 1);
+  const thresholdFor = (value) => (Number(value) <= 0
+    ? 0 : Math.pow(maxArea, Number(value) / Number(slider.max)));
+  const showArea = (m2) => (m2 < 10 ? m2.toFixed(1) : Math.round(m2).toLocaleString("en-US")) + " m²";
+
+  const applyFilter = () => {
+    const threshold = thresholdFor(slider.value);
+    label.textContent = showArea(threshold);
+    let polygons = 0, yes = 0, no = 0;
+    for (const u of units) {
+      const big = u.area >= threshold;
+      if (big && !u.group.hasLayer(u.polygon)) { u.group.addLayer(u.polygon); }
+      if (big && !u.group.hasLayer(u.marker)) { u.group.addLayer(u.marker); }
+      if (!big && u.group.hasLayer(u.polygon)) { u.group.removeLayer(u.polygon); }
+      if (!big && u.group.hasLayer(u.marker)) { u.group.removeLayer(u.marker); }
+      if (big && map.hasLayer(u.group)) { polygons += 1; yes += u.yes; no += u.no; }
+    }
+    document.getElementById("stat-polygons").textContent = polygons.toLocaleString("en-US");
+    document.getElementById("stat-yes").textContent = yes.toLocaleString("en-US");
+    document.getElementById("stat-no").textContent = no.toLocaleString("en-US");
+    return { polygons, yes, no, threshold };
+  };
+
+  slider.addEventListener("input", applyFilter);
+  map.on("overlayadd overlayremove", applyFilter);
+  applyFilter();
+  window.landuseApp = { map, units, slider, thresholdFor, applyFilter };
+})();
+</script>
+</body>
+</html>
+"""
 
 
-def map_document(places: list[Place]) -> str:
-    """Return one full-page map. Hovering a polygon shows its label and text."""
-    fmap = folium.Map(tiles=None, control_scale=True)
-    folium.TileLayer(tiles=BASEMAP_URL, attr=BASEMAP_ATTR, max_zoom=20).add_to(fmap)
-    for place in places:
-        folium.GeoJson(
-            shapely.geometry.mapping(place.geometry),
-            style_function=_style(_color(place)),
-            highlight_function=_highlight,
-            tooltip=folium.Tooltip(_tooltip_html(place)),
-        ).add_to(fmap)
-    # Hit markers go on top of all polygons. Each one sits at a point inside its
-    # polygon, so a tiny polygon can still be hovered.
-    for place in places:
-        point = place.geometry.representative_point()
-        folium.CircleMarker(
-            location=(point.y, point.x),
-            radius=HIT_RADIUS,
-            stroke=False,
-            fill=True,
-            fill_opacity=HIT_OPACITY,
-            tooltip=folium.Tooltip(_tooltip_html(place)),
-        ).add_to(fmap)
-    if places:
-        minx, miny, maxx, maxy = shapely.total_bounds([p.geometry for p in places])
-        fmap.fit_bounds([[miny, minx], [maxy, maxx]])
-    root = cast(folium.Figure, fmap.get_root())
-    root.header.add_child(folium.Element(PAGE_HEAD))
-    root.html.add_child(folium.Element(_legend_html()))
-    return root.render()
+def map_document(places: Sequence[Place]) -> str:
+    """Return one full-page map of one set of places."""
+    return map_regions({"polygons": places})
+
+
+def map_regions(regions: Mapping[str, Sequence[Place]]) -> str:
+    """Return one full-page map. Each named region is a layer the page can toggle.
+
+    Hovering a polygon or its hit marker shows its label and text. The slider
+    hides polygons below a minimum area. The stats count the polygons shown.
+    """
+    everything = [p for places in regions.values() for p in places]
+    data = {
+        "basemap": {"url": BASEMAP_URL, "attribution": BASEMAP_ATTR},
+        "bounds": _bounds(everything),
+        "hit": {"radius": HIT_RADIUS, "opacity": HIT_OPACITY},
+        "regions": [
+            {"name": name, "places": [_place_record(p) for p in places]}
+            for name, places in regions.items()
+        ],
+    }
+    # Replace the data last. Its text must not be scanned for placeholders.
+    return (
+        PAGE.replace("__LEAFLET_CSS__", LEAFLET_CSS)
+        .replace("__LEAFLET_JS__", LEAFLET_JS)
+        .replace("__LEGEND__", _legend_html())
+        .replace("__DATA__", _json_for_script(data))
+    )
 
 
 def summary_table(places: list[Place]) -> pd.DataFrame:
@@ -138,15 +237,37 @@ def _color(place: Place) -> str:
     return CATEGORY_COLOR[_category(place)]
 
 
-def _style(color: str) -> Callable[[dict], dict]:
-    def style(_feature: dict) -> dict:
-        return {"fillColor": color, "color": color, "weight": 1, "fillOpacity": 0.5}
+def _place_record(place: Place) -> dict:
+    """Return the JSON record that the page draws for one polygon."""
+    point = place.geometry.representative_point()
+    return {
+        "polygon": shapely.geometry.mapping(place.geometry),
+        "hit": [float(point.y), float(point.x)],
+        "color": _color(place),
+        "area": float(place.area_m2),
+        "yes": place.count(YES),
+        "no": place.count(NO),
+        "tip": _tooltip_html(place),
+    }
 
-    return style
+
+def _bounds(places: Sequence[Place]) -> list[list[float]] | None:
+    if not places:
+        return None
+    minx, miny, maxx, maxy = shapely.total_bounds([p.geometry for p in places])
+    return [[float(miny), float(minx)], [float(maxy), float(maxx)]]
 
 
-def _highlight(_feature: dict) -> dict:
-    return {"weight": 3, "fillOpacity": 0.75}
+def _json_for_script(data: object) -> str:
+    """Return JSON that is safe inside a script tag."""
+    text = json.dumps(data, ensure_ascii=False)
+    return (
+        text.replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace(" ", "\\u2028")
+        .replace(" ", "\\u2029")
+    )
 
 
 def _tooltip_html(place: Place) -> str:
@@ -167,19 +288,13 @@ def _sentence_block(sentence: Sentence) -> str:
 
 def _legend_html() -> str:
     rows = "".join(
-        '<div style="display:flex;align-items:center;gap:8px;margin:3px 0;">'
-        f'<span style="display:inline-block;width:14px;height:14px;border-radius:3px;'
-        f'background:{CATEGORY_COLOR[key]};"></span>'
+        '<div class="row">'
+        f'<span class="swatch" style="background:{CATEGORY_COLOR[key]};"></span>'
         f"<span>{escape(name)}</span></div>"
         for key, name in CATEGORY_NAME.items()
     )
     return (
-        '<div class="legend" style="position:fixed;top:24px;right:24px;z-index:9999;'
-        "background:#fff;padding:10px 12px;border-radius:10px;"
-        "box-shadow:0 2px 8px rgba(0,0,0,.2);"
-        'font:13px/1.4 system-ui,sans-serif;color:#0f172a;">'
-        '<div style="font-weight:600;margin-bottom:4px;">Polygon color</div>'
-        f"{rows}</div>"
+        f'<div class="legend"><div class="legend-title">Polygon color</div>{rows}</div>'
     )
 
 

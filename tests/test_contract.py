@@ -4,6 +4,7 @@ import re
 from html import escape
 
 import shapely
+from helpers import page_data
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
@@ -109,8 +110,10 @@ def test_category_follows_the_labels_shown(place):
 
 @SLOW
 @given(PLACES)
-def test_map_draws_each_polygon_with_its_color_and_a_hit_marker(place):
-    doc = map_document([place])
-    assert doc.count("L.geoJson(") == 1
-    assert doc.count("L.circleMarker(") == 1
-    assert f'"fillColor": "{_color(place)}"' in doc
+def test_page_record_matches_the_place(place):
+    record = page_data(map_document([place]))["regions"][0]["places"][0]
+    assert record["color"] == _color(place)
+    assert record["tip"] == _tooltip_html(place)
+    assert record["yes"] == place.count(YES)
+    assert record["no"] == place.count(NO)
+    assert record["area"] == place.area_m2

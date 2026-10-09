@@ -8,7 +8,7 @@ from pathlib import Path
 
 from landuse_map.data import load_region
 from landuse_map.render import map_document, stats_markdown, summary_table
-from landuse_map.site import SITE_REGION, build_site
+from landuse_map.site import SITE_NAMES, build_site
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -49,7 +49,10 @@ def build_parser() -> argparse.ArgumentParser:
         "output", type=Path, help="directory for the site files"
     )  # pragma: no mutate
     site.add_argument(
-        "--region", default=SITE_REGION, help="input region to show"
+        "--regions",
+        nargs="+",
+        default=list(SITE_NAMES),
+        help="input regions, for example albania-latest",
     )  # pragma: no mutate
     return parser
 
@@ -57,7 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "site":
-        page = build_site(args.output, args.region)
+        page = build_site(args.output, args.regions)
         print(f"wrote {page} and {args.output / 'README.md'}")
         return 0
 

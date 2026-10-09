@@ -3,19 +3,23 @@ from collections import Counter
 
 import pandas as pd
 import shapely
+from helpers import page_data
 
 from landuse_map.data import NO, YES, Place, RegionSample, Sentence, Text, load_region
 from landuse_map.render import (
+    BASEMAP_URL,
     CATEGORY_COLOR,
     CATEGORY_NAME,
+    LEAFLET_JS,
     NO_TEXT_HTML,
     _category,
     _color,
+    _json_for_script,
     _legend_html,
     _pct,
-    _style,
     _tooltip_html,
     map_document,
+    map_regions,
     stats_markdown,
     summary_table,
 )
@@ -50,22 +54,79 @@ def test_map_document_is_one_full_page_map():
     doc = map_document(load_region(REGION).places)
     assert doc.startswith("<!DOCTYPE html>")
     assert "<title>Land-use map</title>" in doc
+    assert LEAFLET_JS in doc
 
 
-def test_map_document_fits_the_view_to_the_places():
-    doc = map_document(load_region(REGION).places)
-    assert "[[0.0, 0.0], [1.0, 5.0]]" in doc
-
-
-def test_map_document_without_places_does_not_fit():
-    assert "fitBounds" not in map_document([])
-
-
-def test_map_document_draws_one_polygon_and_one_hit_marker_per_place():
+def test_page_data_has_one_record_per_place():
     places = load_region(REGION).places
-    doc = map_document(places)
-    assert doc.count("L.geoJson(") == len(places)
-    assert doc.count("L.circleMarker(") == len(places)
+    records = page_data(map_document(places))["regions"][0]["places"]
+    assert len(records) == len(places)
+
+
+def test_record_holds_color_counts_area_and_tooltip():
+    farm = load_region(REGION).places[0]
+    record = page_data(map_document([farm]))["regions"][0]["places"][0]
+    assert record["color"] == MIXED_COLOR
+    assert (record["yes"], record["no"]) == (1, 1)
+    assert record["area"] == 100.0
+    assert record["tip"] == _tooltip_html(farm)
+
+
+def test_record_has_the_polygon_geometry_and_a_hit_point_inside_it():
+    farm = load_region(REGION).places[0]
+    record = page_data(map_document([farm]))["regions"][0]["places"][0]
+    assert record["polygon"]["type"] in {"Polygon", "MultiPolygon"}
+    lat, lng = record["hit"]
+    assert shapely.contains_xy(farm.geometry, lng, lat)
+
+
+def test_hit_markers_are_small_and_nearly_transparent():
+    assert page_data(map_document([only(YES)]))["hit"] == {"radius": 6, "opacity": 0.01}
+
+
+def test_map_regions_keeps_one_named_layer_per_region():
+    data = page_data(map_regions({"Alpha": [only(YES)], "Beta": [only(NO), only(YES)]}))
+    assert [r["name"] for r in data["regions"]] == ["Alpha", "Beta"]
+    assert [len(r["places"]) for r in data["regions"]] == [1, 2]
+
+
+def test_bounds_cover_all_places():
+    data = page_data(map_document(load_region(REGION).places))
+    assert data["bounds"] == [[0.0, 0.0], [1.0, 5.0]]
+
+
+def test_bounds_are_none_without_places():
+    assert page_data(map_document([]))["bounds"] is None
+
+
+def test_basemap_is_the_openstreetmap_tile_server():
+    assert page_data(map_document([]))["basemap"]["url"] == BASEMAP_URL
+
+
+def test_page_has_the_stats_and_the_area_slider():
+    doc = map_document([only(YES)])
+    for element_id in [
+        "stat-polygons",
+        "stat-yes",
+        "stat-no",
+        "min-area",
+        "min-area-label",
+    ]:
+        assert f'id="{element_id}"' in doc
+
+
+def test_json_escapes_markup_so_the_page_stays_intact():
+    doc = map_document([only(YES)])
+    assert "\\u003cdiv\\u003e" in doc
+    assert doc.count("</script>") == 3
+
+
+def test_json_for_script_escapes_ampersand_angle_brackets_and_separators():
+    text = _json_for_script({"a": "x & y <z>    "})
+    assert "\\u0026" in text
+    assert "\\u003c" in text and "\\u003e" in text
+    assert "\\u2028" in text and "\\u2029" in text
+    assert "<" not in text and ">" not in text
 
 
 def test_tooltip_shows_the_label_and_text_of_each_sentence():
@@ -115,29 +176,24 @@ def test_tooltip_prefers_description_over_its_variants():
 def test_category_yes_only_no_only_and_mixed_and_none():
     assert _category(only(YES)) == "yes"
     assert _category(only(NO)) == "no"
-    assert (
-        _category(place(Text("description", (Sentence("a", YES), Sentence("b", NO)))))
-        == "mixed"
-    )
+    both = place(Text("description", (Sentence("a", YES), Sentence("b", NO))))
+    assert _category(both) == "mixed"
     assert _category(place()) == "none"
     assert _category(only("failed")) == "none"
 
 
 def test_category_colors_are_four_distinct_colors():
-    colors = [YES_COLOR, NO_COLOR, MIXED_COLOR, NONE_COLOR]
-    assert len(set(colors)) == 4
+    assert len({YES_COLOR, NO_COLOR, MIXED_COLOR, NONE_COLOR}) == 4
+    both = place(Text("description", (Sentence("a", YES), Sentence("b", NO))))
     assert _color(only(YES)) == YES_COLOR
     assert _color(only(NO)) == NO_COLOR
-    assert (
-        _color(place(Text("description", (Sentence("a", YES), Sentence("b", NO)))))
-        == MIXED_COLOR
-    )
+    assert _color(both) == MIXED_COLOR
     assert _color(place()) == NONE_COLOR
 
 
-def test_map_document_uses_the_category_color_of_each_polygon():
-    assert f'"fillColor": "{YES_COLOR}"' in map_document([only(YES)])
-    assert f'"fillColor": "{NO_COLOR}"' in map_document([only(NO)])
+def test_page_colors_each_polygon_by_its_category():
+    records = page_data(map_document([only(YES), only(NO)]))["regions"][0]["places"]
+    assert [r["color"] for r in records] == [YES_COLOR, NO_COLOR]
 
 
 def test_legend_lists_every_category_with_its_color():
@@ -145,23 +201,13 @@ def test_legend_lists_every_category_with_its_color():
     assert "Polygon color" in legend
     for key, name in CATEGORY_NAME.items():
         assert name in legend
-        assert CATEGORY_COLOR[key] in legend
-    assert "yes and no" in legend
+        assert legend.count(CATEGORY_COLOR[key]) == 1
 
 
 def test_map_document_contains_the_legend():
     doc = map_document([only(YES)])
     assert "Polygon color" in doc
     assert "only yes" in doc and "only no" in doc
-
-
-def test_polygon_style_values():
-    assert _style(YES_COLOR)({}) == {
-        "fillColor": YES_COLOR,
-        "color": YES_COLOR,
-        "weight": 1,
-        "fillOpacity": 0.5,
-    }
 
 
 def test_summary_table_has_one_row_per_place():
@@ -228,21 +274,3 @@ def test_pct_rounds_to_whole_percent_and_marks_nan():
 def test_fixture_polygons_get_the_expected_categories():
     colors = Counter(_color(p) for p in load_region(REGION).places)
     assert colors == Counter({MIXED_COLOR: 1, NONE_COLOR: 2})
-
-
-def test_highlight_values():
-    from landuse_map.render import _highlight
-
-    assert _highlight({}) == {"weight": 3, "fillOpacity": 0.75}
-
-
-def test_hit_markers_are_small_and_nearly_transparent():
-    doc = map_document([only(YES)])
-    assert '"radius": 6' in doc
-    assert '"fillOpacity": 0.01' in doc
-
-
-def test_legend_has_one_swatch_per_category_color():
-    legend = _legend_html()
-    for color in CATEGORY_COLOR.values():
-        assert legend.count(color) == 1
