@@ -1,9 +1,9 @@
-"""Load OSM polygons joined to their land-use sentence labels.
+"""Load OSM polygons and their land-use sentence labels.
 
-The Hugging Face dataset is three parquet tables per input region:
-polygons (`data/`), texts split into sentences (`language-v1/data/`) and one
-label per sentence (`labels/language-v1/data/`). The joins live here, so
-callers only see `load_region` and the `Place` records.
+The Hugging Face dataset has three parquet tables for each input region:
+polygons (`data/`), texts split into sentences (`language-v1/data/`), and one
+label for each sentence (`labels/language-v1/data/`). This module joins the
+tables. Other modules use only `load_region` and the `Place` records.
 """
 
 from __future__ import annotations
@@ -61,6 +61,11 @@ class Place:
         return sum(s.label == label for t in self.texts for s in t.sentences)
 
     @property
+    def description(self) -> Text | None:
+        """The text of the OSM `description` tag, or None when there is none."""
+        return next((t for t in self.texts if t.tag_key == "description"), None)
+
+    @property
     def share_yes(self) -> float:
         yes, no = self.count(YES), self.count(NO)
         return yes / (yes + no) if yes + no else math.nan
@@ -72,11 +77,14 @@ class RegionSample:
     places: list[Place]
     total: int
 
+    def count(self, label: str) -> int:
+        return sum(p.count(label) for p in self.places)
+
 
 def load_region(region: str, sample_size: int | None = None) -> RegionSample:
-    """Places of one input region (e.g. "albania-latest"), optionally sampled.
+    """Return the places of one input region, for example "albania-latest".
 
-    The sample is random but seeded, so the same call returns the same places.
+    A sample is random but seeded. The same call returns the same places.
     """
     places = list(_read_region(region))
     total = len(places)
@@ -116,7 +124,7 @@ def _texts_by_place(
 
 
 def _sentences(source: pd.Series, decisions: pd.Series) -> tuple[Sentence, ...]:
-    # Unsplit texts have no sentence list: the whole text is one sentence.
+    # An unsplit text has no sentence list. The whole text is one sentence.
     pieces = list(source["sentences"]) or [source["original_text"]]
     return tuple(
         Sentence(text=piece, label=decision)
@@ -150,5 +158,5 @@ def _text_or(value: object, default: str) -> str:
     return value if isinstance(value, str) and value else default
 
 
-def _date(value: pd.Timestamp) -> str:
+def _date(value: Any) -> str:
     return "" if pd.isna(value) else value.date().isoformat()

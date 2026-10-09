@@ -130,7 +130,7 @@ LABEL_ROWS = [
 
 @pytest.fixture(autouse=True)
 def region_files(tmp_path, monkeypatch):
-    """Serve the three test tables in place of the Hugging Face downloads."""
+    """Serve three test tables instead of Hugging Face downloads."""
     tables = {
         f"data/{REGION}.parquet": (POLYGONS, POLYGON_ROWS),
         f"language-v1/data/{REGION}.parquet": (SOURCES, SOURCE_ROWS),

@@ -9,3 +9,4 @@ mutants/
 coverage.json
 .coverage
 htmlcov/
+site-out/

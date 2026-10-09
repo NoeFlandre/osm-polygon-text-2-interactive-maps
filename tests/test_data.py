@@ -1,5 +1,7 @@
 import math
 
+import pandas as pd
+
 from landuse_map.data import (
     FAILED,
     NO,
@@ -7,6 +9,8 @@ from landuse_map.data import (
     YES,
     Sentence,
     Text,
+    _date,
+    _text_or,
     load_region,
 )
 
@@ -71,13 +75,30 @@ def test_share_yes_is_nan_without_yes_or_no():
     assert math.isnan(ruin.share_yes)
 
 
+def test_region_sample_counts_each_label():
+    sample = load_region(REGION)
+    assert sample.count(YES) == 1
+    assert sample.count(NO) == 1
+    assert sample.count(FAILED) == 1
+    assert sample.count(SKIPPED) == 1
+
+
 def test_sample_draws_that_many_places_reproducibly():
     first = load_region(REGION, sample_size=2)
     second = load_region(REGION, sample_size=2)
     assert first.total == 3
     assert len(first.places) == 2
     assert [p.osm_id for p in first.places] == [p.osm_id for p in second.places]
-    assert {p.osm_id for p in first.places} <= {1, 2, 3}
+
+
+def test_sample_with_fixed_seed_picks_known_places():
+    sample = load_region(REGION, sample_size=2)
+    assert [p.osm_id for p in sample.places] == [2, 3]
+
+
+def test_sample_equal_to_total_keeps_order():
+    sample = load_region(REGION, sample_size=3)
+    assert [p.osm_id for p in sample.places] == [1, 2, 3]
 
 
 def test_sample_larger_than_region_keeps_everything_in_order():
@@ -89,3 +110,22 @@ def test_no_sample_keeps_everything_in_order():
     sample = load_region(REGION)
     assert sample.region == REGION
     assert [p.osm_id for p in sample.places] == [1, 2, 3]
+
+
+def test_text_or_returns_default_for_empty_or_missing_values():
+    assert _text_or("", "fallback") == "fallback"
+    assert _text_or(None, "fallback") == "fallback"
+    assert _text_or(3, "fallback") == "fallback"
+    assert _text_or("kept", "fallback") == "kept"
+
+
+def test_date_gives_iso_day_and_blank_for_missing():
+    assert _date(pd.Timestamp("2024-01-02T10:00:00Z")) == "2024-01-02"
+    assert _date(pd.NaT) == ""
+
+
+def test_description_is_the_description_tag_text():
+    places = by_id(load_region(REGION).places)
+    assert places[1].description == places[1].texts[0]
+    assert places[2].description == Text("description", (Sentence("Ruin", FAILED),))
+    assert places[3].description is None
