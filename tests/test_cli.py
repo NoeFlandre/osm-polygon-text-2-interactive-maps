@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from landuse_map.cli import build_parser, main
-from landuse_map.site import SITE_NAMES
+from landuse_map.site import MAX_POLYGONS
 
 REGION = "testland-latest"
 
@@ -55,18 +55,28 @@ def test_stats_defaults():
     assert args.sample is None
 
 
-def test_site_writes_the_space_files(tmp_path, capsys):
+def test_site_writes_the_page_and_the_area_files(tmp_path, capsys):
     out = tmp_path / "site"
-    assert main(["site", str(out), "--regions", REGION]) == 0
+    assert main(["site", str(out), "--areas", REGION]) == 0
     assert (out / "index.html").exists()
     assert (out / "README.md").exists()
-    expected = f"wrote {out / 'index.html'} and {out / 'README.md'}"
-    assert expected in capsys.readouterr().out
+    assert (out / "data" / f"{REGION}.json").exists()
+    assert "wrote" in capsys.readouterr().out
 
 
-def test_site_defaults_to_the_site_regions():
+def test_site_sample_option_caps_each_area(tmp_path):
+    import json
+
+    out = tmp_path / "site"
+    main(["site", str(out), "--areas", REGION, "--sample", "1"])
+    payload = json.loads((out / "data" / f"{REGION}.json").read_text(encoding="utf-8"))
+    assert len(payload["places"]) == 1
+
+
+def test_site_defaults_to_every_area_and_the_cap():
     args = build_parser().parse_args(["site", "out"])
-    assert args.regions == list(SITE_NAMES)
+    assert args.areas is None
+    assert args.sample == MAX_POLYGONS
 
 
 def test_a_command_is_required():

@@ -31,6 +31,10 @@ uv run mutmut results
 
 The report lists the changes that the tests did not catch.
 
+## Browser tests
+
+The browser tests build a small site, serve it over HTTP, and drive it in Chromium. They need network access to the dataset and to the map tiles.
+
 ## Gates in CI
 
 - Every function must have a CRAP score below 6.

@@ -3,7 +3,7 @@ from collections import Counter
 
 import pandas as pd
 import shapely
-from helpers import page_data
+from helpers import page_data, page_places
 
 from landuse_map.data import NO, YES, Place, RegionSample, Sentence, Text, load_region
 from landuse_map.render import (
@@ -18,8 +18,8 @@ from landuse_map.render import (
     _legend_html,
     _pct,
     _tooltip_html,
+    area_payload,
     map_document,
-    map_regions,
     stats_markdown,
     summary_table,
 )
@@ -59,13 +59,13 @@ def test_map_document_is_one_full_page_map():
 
 def test_page_data_has_one_record_per_place():
     places = load_region(REGION).places
-    records = page_data(map_document(places))["regions"][0]["places"]
+    records = page_places(map_document(places))
     assert len(records) == len(places)
 
 
 def test_record_holds_color_counts_area_and_tooltip():
     farm = load_region(REGION).places[0]
-    record = page_data(map_document([farm]))["regions"][0]["places"][0]
+    record = page_places(map_document([farm]))[0]
     assert record["color"] == MIXED_COLOR
     assert (record["yes"], record["no"]) == (1, 1)
     assert record["area"] == 100.0
@@ -74,7 +74,7 @@ def test_record_holds_color_counts_area_and_tooltip():
 
 def test_record_has_the_polygon_geometry_and_a_hit_point_inside_it():
     farm = load_region(REGION).places[0]
-    record = page_data(map_document([farm]))["regions"][0]["places"][0]
+    record = page_places(map_document([farm]))[0]
     assert record["polygon"]["type"] in {"Polygon", "MultiPolygon"}
     lat, lng = record["hit"]
     assert shapely.contains_xy(farm.geometry, lng, lat)
@@ -84,19 +84,21 @@ def test_hit_markers_are_small_and_nearly_transparent():
     assert page_data(map_document([only(YES)]))["hit"] == {"radius": 6, "opacity": 0.01}
 
 
-def test_map_regions_keeps_one_named_layer_per_region():
-    data = page_data(map_regions({"Alpha": [only(YES)], "Beta": [only(NO), only(YES)]}))
-    assert [r["name"] for r in data["regions"]] == ["Alpha", "Beta"]
-    assert [len(r["places"]) for r in data["regions"]] == [1, 2]
+def test_area_payload_names_the_area_and_its_total():
+    places = load_region(REGION).places
+    payload = area_payload("Testland", places, total=5)
+    assert payload["name"] == "Testland"
+    assert payload["total"] == 5
+    assert len(payload["places"]) == len(places)
 
 
 def test_bounds_cover_all_places():
     data = page_data(map_document(load_region(REGION).places))
-    assert data["bounds"] == [[0.0, 0.0], [1.0, 5.0]]
+    assert data["area"]["bounds"] == [[0.0, 0.0], [1.0, 5.0]]
 
 
 def test_bounds_are_none_without_places():
-    assert page_data(map_document([]))["bounds"] is None
+    assert page_data(map_document([]))["area"]["bounds"] is None
 
 
 def test_basemap_is_the_openstreetmap_tile_server():
@@ -192,7 +194,7 @@ def test_category_colors_are_four_distinct_colors():
 
 
 def test_page_colors_each_polygon_by_its_category():
-    records = page_data(map_document([only(YES), only(NO)]))["regions"][0]["places"]
+    records = page_places(map_document([only(YES), only(NO)]))
     assert [r["color"] for r in records] == [YES_COLOR, NO_COLOR]
 
 

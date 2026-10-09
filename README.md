@@ -1,6 +1,6 @@
 # OSM land-use map
 
-This project shows OpenStreetMap polygons on one map. Hover over a polygon to see its land-use label and its text.
+This project shows OpenStreetMap polygons on one page, for every area in the dataset. Pick an area, then hover over a polygon to see its land-use labels and text.
 
 The data comes from the Hugging Face dataset [osm-polygon-description-tag-landuse](https://huggingface.co/datasets/NoeFlandre/osm-polygon-description-tag-landuse). The dataset uses the ODbL license.
 

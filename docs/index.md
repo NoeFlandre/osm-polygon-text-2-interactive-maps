@@ -1,25 +1,30 @@
 # OSM land-use map
 
-This project shows OpenStreetMap polygons for five countries on one map:
-Albania, Montenegro, Kosovo, North Macedonia, and Bosnia and Herzegovina.
+This project shows OpenStreetMap polygons on one page. The page covers every area in the dataset.
 
-Hover over a polygon to see:
+## Use the page
 
-- The label of each sentence of its `description` text. A label is *yes* if the sentence is relevant for land use, and *no* if it is not.
-- The text itself. Polygons without a `description` tag show their other description text. Polygons without any text say so.
+1. Type an area name in the **Area** box, for example `Albania`. The box suggests names as you type.
+2. The page loads the area. Its polygons appear on the map.
+3. Hover over a polygon to see its labels and text. A label is *yes* if a sentence is relevant for land use. A label is *no* if it is not.
+4. Use the slider to hide polygons smaller than a chosen area. The slider scale is logarithmic.
+5. Read the counts. The panel shows the polygons on the map, and the yes and no labels among them.
 
-Polygon colors show the labels:
+Polygon colors:
 
 - Teal: only yes labels.
 - Orange: only no labels.
 - Purple: yes and no labels.
 - Grey: no yes or no label.
 
-Use the page controls to:
+## Text
 
-- See the number of polygons shown, and the number of yes and no labels among them.
-- Move the area slider to hide polygons smaller than a chosen area. The slider scale is logarithmic.
-- Switch a country on or off in the layer list.
+The hover text uses the `description` tag of the polygon. The text can be in any language. The language is the one the OSM contributor used. When a polygon has no `description` tag, the page uses another description tag.
+
+## Limits
+
+- Each area shows at most 10,000 polygons. Larger areas use a random sample. The panel says when it shows a sample.
+- The page loads one area at a time. A large area can take a few seconds to load.
 
 ## Data
 
