@@ -82,3 +82,24 @@ def test_site_defaults_to_every_area_and_the_cap():
 def test_a_command_is_required():
     with pytest.raises(SystemExit):
         main([])
+
+
+@pytest.mark.parametrize("value", ["-1", "0"])
+def test_sample_must_be_at_least_one(value):
+    with pytest.raises(SystemExit):
+        main(["build", REGION, "--sample", value])
+
+
+def test_unknown_area_prints_one_line_and_exits_with_2(monkeypatch, capsys):
+    from helpers import not_found_error
+
+    from landuse_map import data
+
+    def missing(*args, **kwargs):
+        raise not_found_error()
+
+    monkeypatch.setattr(data, "hf_hub_download", missing)
+    assert main(["stats", "nowhere-latest"]) == 2
+    err = capsys.readouterr().err
+    assert "no area named 'nowhere-latest'" in err
+    assert "Traceback" not in err

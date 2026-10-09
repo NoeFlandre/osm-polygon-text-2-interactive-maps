@@ -145,9 +145,12 @@ def region_files(request, tmp_path, monkeypatch):
         pq.write_table(pa.Table.from_pylist(rows, schema=schema), path)
         paths[filename] = str(path)
 
-    def fake_download(repo_id: str, filename: str, repo_type: str) -> str:
+    def fake_download(
+        repo_id: str, filename: str, repo_type: str, revision: str
+    ) -> str:
         assert repo_id == data.REPO_ID
         assert repo_type == "dataset"
+        assert revision == data.REPO_REVISION
         return paths[filename]
 
     monkeypatch.setattr(data, "hf_hub_download", fake_download)

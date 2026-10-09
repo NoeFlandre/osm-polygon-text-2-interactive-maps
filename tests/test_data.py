@@ -1,6 +1,7 @@
 import math
 
 import pandas as pd
+import pytest
 import shapely
 
 from landuse_map.data import (
@@ -200,10 +201,112 @@ def test_list_areas_names_every_parquet_file_in_data(monkeypatch):
     ]
 
     class FakeApi:
-        def list_repo_tree(self, repo_id, repo_type, path_in_repo):
+        def list_repo_tree(self, repo_id, repo_type, path_in_repo, revision):
             assert repo_id == data.REPO_ID
             assert path_in_repo == "data"
+            assert revision == data.REPO_REVISION
             return listed
 
     monkeypatch.setattr(data, "HfApi", FakeApi)
     assert data.list_areas() == ["albania-latest", "us-alaska-latest"]
+
+
+def test_unknown_area_raises_a_lookup_error_that_names_it(monkeypatch):
+    from helpers import not_found_error
+
+    from landuse_map import data
+
+    def missing(*args, **kwargs):
+        raise not_found_error()
+
+    monkeypatch.setattr(data, "hf_hub_download", missing)
+    with pytest.raises(LookupError, match="nowhere-latest"):
+        load_region("nowhere-latest")
+
+
+def test_dataset_revision_is_pinned_to_a_commit():
+    from landuse_map import data
+
+    assert len(data.REPO_REVISION) == 40
+    assert all(ch in "0123456789abcdef" for ch in data.REPO_REVISION)
+
+
+def test_label_without_a_text_id_is_an_error():
+    import pandas as pd
+
+    from landuse_map.data import _texts_by_place
+
+    sources = pd.DataFrame(
+        columns=[
+            "description_identity",
+            "osm_type",
+            "osm_id",
+            "tag_key",
+            "original_text",
+            "sentences",
+        ]
+    )
+    labels = pd.DataFrame(
+        {
+            "description_identity": [None],
+            "tag_key": ["description"],
+            "sentence_index": [0],
+            "decision": ["yes"],
+        }
+    )
+    with pytest.raises(ValueError, match="without a text id"):
+        _texts_by_place(sources, labels, "testland-latest")
+
+
+def test_label_for_an_unknown_text_is_an_error():
+    import pandas as pd
+
+    from landuse_map.data import _texts_by_place
+
+    sources = pd.DataFrame(
+        columns=[
+            "description_identity",
+            "osm_type",
+            "osm_id",
+            "tag_key",
+            "original_text",
+            "sentences",
+        ]
+    )
+    labels = pd.DataFrame(
+        {
+            "description_identity": ["ghost"],
+            "tag_key": ["description"],
+            "sentence_index": [0],
+            "decision": ["yes"],
+        }
+    )
+    with pytest.raises(ValueError, match="point to no text"):
+        _texts_by_place(sources, labels, "testland-latest")
+
+
+def test_label_index_gap_is_an_error_not_a_shift():
+    import pandas as pd
+
+    from landuse_map.data import _texts_by_place
+
+    sources = pd.DataFrame(
+        {
+            "description_identity": ["d1"],
+            "osm_type": ["way"],
+            "osm_id": [1],
+            "tag_key": ["description"],
+            "original_text": ["a. b. c."],
+            "sentences": [["a.", "b.", "c."]],
+        }
+    )
+    labels = pd.DataFrame(
+        {
+            "description_identity": ["d1", "d1"],
+            "tag_key": ["description"] * 2,
+            "sentence_index": [0, 2],
+            "decision": ["yes", "no"],
+        }
+    )
+    with pytest.raises(ValueError, match="do not match 3 sentences"):
+        _texts_by_place(sources, labels, "testland-latest")

@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
 from landuse_map.data import load_region
 from landuse_map.render import map_document, stats_markdown, summary_table
 from landuse_map.site import MAX_POLYGONS, build_site, display_name
+
+
+def positive_int(text: str) -> int:
+    value = int(text)
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"must be at least 1, got {value}")
+    return value
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,7 +35,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="area id, for example albania-latest",  # pragma: no mutate
     )
     build.add_argument("-o", "--output", type=Path, default=Path("map.html"))
-    build.add_argument("--sample", type=int, help="random sample of N polygons")
+    build.add_argument(
+        "--sample", type=positive_int, help="random sample of N polygons"
+    )
 
     stats = commands.add_parser(
         "stats",
@@ -37,7 +47,9 @@ def build_parser() -> argparse.ArgumentParser:
         "region",
         help="area id, for example albania-latest",  # pragma: no mutate
     )
-    stats.add_argument("--sample", type=int, help="random sample of N polygons")
+    stats.add_argument(
+        "--sample", type=positive_int, help="random sample of N polygons"
+    )
     stats.add_argument(
         "--csv",
         type=Path,
@@ -60,7 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     site.add_argument(
         "--sample",
-        type=int,
+        type=positive_int,
         default=MAX_POLYGONS,
         help="most polygons per area",  # pragma: no mutate
     )
@@ -69,6 +81,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    try:
+        return _run(args)
+    except LookupError as error:
+        print(f"landuse-map: {error}", file=sys.stderr)
+        return 2
+
+
+def _run(args: argparse.Namespace) -> int:
     if args.command == "site":
         page = build_site(args.output, args.areas, args.sample, progress=print)
         print(f"wrote {page} and the area files in {args.output / 'data'}")

@@ -20,9 +20,12 @@ import pandas as pd
 import pyarrow.parquet as pq
 import shapely
 from huggingface_hub import HfApi, hf_hub_download
+from huggingface_hub.errors import RemoteEntryNotFoundError
 from shapely.geometry.base import BaseGeometry
 
 REPO_ID = "NoeFlandre/osm-polygon-description-tag-landuse"
+# The dataset version that this code reads. Change it on purpose, and test again.
+REPO_REVISION = "d52781febf61a1ee77e4aceb02d9b607628b37c5"
 
 YES = "yes"
 NO = "no"
@@ -93,7 +96,9 @@ class RegionSample:
 
 def list_areas() -> list[str]:
     """Return the id of every area in the dataset, for example "albania-latest"."""
-    entries = HfApi().list_repo_tree(REPO_ID, repo_type="dataset", path_in_repo="data")
+    entries = HfApi().list_repo_tree(
+        REPO_ID, repo_type="dataset", path_in_repo="data", revision=REPO_REVISION
+    )
     paths = [str(entry.path) for entry in entries]
     return sorted(PurePosixPath(p).stem for p in paths if p.endswith(".parquet"))
 
@@ -116,6 +121,7 @@ def _read_region(region: str) -> tuple[Place, ...]:
     texts = _texts_by_place(
         sources=_read("language-v1/data", region),
         labels=_read("labels/language-v1/data", region),
+        region=region,
     )
     geometries = shapely.from_wkb(polygons["geometry"].to_numpy())
     return tuple(
@@ -125,9 +131,15 @@ def _read_region(region: str) -> tuple[Place, ...]:
 
 
 def _texts_by_place(
-    sources: pd.DataFrame, labels: pd.DataFrame
+    sources: pd.DataFrame, labels: pd.DataFrame, region: str
 ) -> dict[tuple[str, int], list[Text]]:
+    """Join the label rows to their texts. Raise on rows that do not fit."""
+    if labels["description_identity"].isna().any():
+        raise ValueError(f"{region}: label rows without a text id")
     sources = sources.set_index("description_identity")
+    unknown = set(labels["description_identity"]) - set(sources.index)
+    if unknown:
+        raise ValueError(f"{region}: {len(unknown)} label rows point to no text")
     texts: defaultdict[tuple[str, int], list[Text]] = defaultdict(list)
     grouped = labels.sort_values("sentence_index").groupby(
         ["description_identity", "tag_key"]
@@ -135,17 +147,23 @@ def _texts_by_place(
     for keys, rows in grouped:
         identity, tag_key = cast(tuple[str, str], keys)
         source = sources.loc[identity]
-        sentences = _sentences(source, rows["decision"])
+        sentences = _sentences(source, rows)
         texts[_place_key(source)].append(Text(tag_key=tag_key, sentences=sentences))
     return texts
 
 
-def _sentences(source: pd.Series, decisions: pd.Series) -> tuple[Sentence, ...]:
+def _sentences(source: pd.Series, rows: pd.DataFrame) -> tuple[Sentence, ...]:
     # An unsplit text has no sentence list. The whole text is one sentence.
     pieces = list(source["sentences"]) or [source["original_text"]]
+    indices = [int(i) for i in rows["sentence_index"]]
+    if indices != list(range(len(pieces))):
+        raise ValueError(
+            f"text {rows['description_identity'].iloc[0]}: label indices {indices} "
+            f"do not match {len(pieces)} sentences"
+        )
     return tuple(
         Sentence(text=piece, label=decision)
-        for piece, decision in zip(pieces, decisions, strict=False)
+        for piece, decision in zip(pieces, rows["decision"], strict=True)
     )
 
 
@@ -167,7 +185,15 @@ def _place(row: Any, geometry: BaseGeometry, texts: Sequence[Text]) -> Place:
 
 
 def _read(folder: str, region: str) -> pd.DataFrame:
-    path = hf_hub_download(REPO_ID, f"{folder}/{region}.parquet", repo_type="dataset")
+    try:
+        path = hf_hub_download(
+            REPO_ID,
+            f"{folder}/{region}.parquet",
+            repo_type="dataset",
+            revision=REPO_REVISION,
+        )
+    except RemoteEntryNotFoundError as error:
+        raise LookupError(f"no area named {region!r} in {REPO_ID}") from error
     return pq.read_table(path).to_pandas()
 
 
