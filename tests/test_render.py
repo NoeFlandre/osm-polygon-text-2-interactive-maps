@@ -10,7 +10,9 @@ from landuse_map.render import (
     BASEMAP_URL,
     CATEGORY_COLOR,
     CATEGORY_NAME,
+    LEAFLET_CSS_SRI,
     LEAFLET_JS,
+    LEAFLET_JS_SRI,
     NO_TEXT_HTML,
     _category,
     _color,
@@ -284,3 +286,40 @@ def test_empty_table_keeps_its_header():
     table = summary_table([])
     assert list(table.columns) == TABLE_COLUMNS
     assert len(table) == 0
+
+
+def test_leaflet_tags_carry_integrity_hashes():
+    doc = map_document([only(YES)])
+    assert f'integrity="{LEAFLET_CSS_SRI}"' in doc
+    assert f'integrity="{LEAFLET_JS_SRI}"' in doc
+    assert 'crossorigin=""' in doc
+
+
+def test_tile_layer_stops_at_the_native_zoom_of_the_basemap():
+    doc = map_document([only(YES)])
+    assert "maxNativeZoom: 19" in doc
+
+
+def test_page_data_rejects_nan_and_infinity():
+    import math
+
+    import pytest
+
+    from landuse_map.render import _json_for_script
+
+    with pytest.raises(ValueError):
+        _json_for_script({"area": math.nan})
+    with pytest.raises(ValueError):
+        _json_for_script({"area": math.inf})
+
+
+def test_area_file_rejects_a_nan_area():
+    import math
+
+    import pytest
+
+    from landuse_map.render import area_json
+
+    nan_area = place(area_m2=math.nan)
+    with pytest.raises(ValueError):
+        area_json(area_payload("Testland", [nan_area], total=1))
