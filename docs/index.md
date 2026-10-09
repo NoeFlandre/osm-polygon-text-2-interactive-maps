@@ -4,8 +4,10 @@ This project shows OpenStreetMap polygons on one map.
 
 Hover over a polygon to see:
 
-- Its `landuse` tag, if it has one.
-- Its `description` text. Each sentence has a label: *yes* if the sentence is relevant for land use, *no* if it is not.
+- The text of its `description` tag.
+- A label for each sentence of that text: *yes* if the sentence is relevant for land use, *no* if it is not.
+
+Polygons without a `description` tag show no tooltip.
 
 ## Data
 
