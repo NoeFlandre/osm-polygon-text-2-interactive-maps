@@ -13,6 +13,40 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "coverage>=7.16.2",
+    "mkdocs-material>=9.7.7",
+    "mutmut>=3.8.0",
+    "pytest>=9.1.1",
+    "radon>=6.0.1",
     "ruff>=0.16.10",
     "ty>=0.0.85",
 ]
+
+[project.scripts]
+landuse-map = "landuse_map.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["landuse_map"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["landuse_map"]
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.mutmut]
+paths_to_mutate = ["landuse_map/"]
+tests_dir = ["tests/"]
+
+[tool.ruff]
+extend-exclude = ["mutants"]
+
+[tool.ty.src]
+exclude = ["mutants"]
