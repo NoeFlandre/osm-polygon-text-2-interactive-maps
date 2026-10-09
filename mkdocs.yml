@@ -1,0 +1,20 @@
+site_name: OSM land-use map
+site_description: Interactive map of OpenStreetMap polygons with land-use labels
+repo_url: https://github.com/NoeFlandre/osm-polygon-text-2-interactive-maps
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: teal
+    - scheme: slate
+      primary: teal
+      toggle:
+        icon: material/brightness-4
+        name: Dark mode
+  features:
+    - navigation.sections
+    - content.code.copy
+nav:
+  - Home: index.md
+  - Run locally: run.md
+  - Deploy to Hugging Face Space: deploy.md
