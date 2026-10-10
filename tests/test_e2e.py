@@ -126,6 +126,32 @@ def test_every_polygon_shows_its_text_on_hover(site_url):
             browser.close()
 
 
+def test_a_loading_message_shows_until_the_map_is_drawn(site_url):
+    expected = places_of(AREAS)
+    held = []
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            executable_path=os.environ.get("CHROMIUM_PATH") or None,
+            args=["--no-sandbox"],
+        )
+        try:
+            page = browser.new_page(viewport={"width": 1300, "height": 900})
+            # Hold the map file, so the loading state stays on screen.
+            page.route("**/data/map.json.gz", lambda route: held.append(route))
+            page.goto(site_url, wait_until="domcontentloaded")
+            page.wait_for_function("() => !document.getElementById('status').hidden")
+            assert page.inner_text("#status-text").startswith("Loading")
+            assert page.inner_text("#stat-polygons") == "–"
+            held[0].continue_()
+            page.wait_for_function(
+                "window.landuseApp && window.landuseApp.units().length > 0"
+            )
+            assert not page.is_visible("#status")
+            assert page.inner_text("#stat-polygons") == f"{len(expected):,}"
+        finally:
+            browser.close()
+
+
 def test_slider_hides_small_polygons_and_updates_the_stats(site_url):
     expected = places_of(AREAS)
     with sync_playwright() as p:

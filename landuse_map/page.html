@@ -25,6 +25,7 @@ html, body { margin: 0; height: 100%; }
 .panel .stats { display: flex; justify-content: space-between; margin: 8px 0; }
 .panel .stats b { font-size: 16px; }
 .panel .status { color: #475569; }
+.panel progress { width: 100%; margin-top: 4px; }
 .panel label { display: block; margin-top: 6px; }
 .panel input[type=range] { width: 100%; margin: 4px 0 0; }
 .legend { bottom: 36px; right: 12px; }
@@ -36,11 +37,14 @@ html, body { margin: 0; height: 100%; }
 <body>
 <div id="map"></div>
 <div class="panel">
-  <div class="status" id="status" hidden></div>
+  <div class="status" id="status" role="status" hidden>
+    <span id="status-text"></span>
+    <progress id="progress" max="1" hidden></progress>
+  </div>
   <div class="stats">
-    <div><b id="stat-polygons">0</b> polygons</div>
-    <div><b id="stat-yes">0</b> yes labels</div>
-    <div><b id="stat-no">0</b> no labels</div>
+    <div><b id="stat-polygons">–</b> polygons</div>
+    <div><b id="stat-yes">–</b> yes labels</div>
+    <div><b id="stat-no">–</b> no labels</div>
   </div>
   <label for="min-area">Smallest area shown: <b id="min-area-label">0 m²</b></label>
   <input id="min-area" type="range" min="0" max="1000" step="1" value="0">
@@ -61,6 +65,8 @@ __LEGEND__
   // near a unit's hit point, or inside its outline, counts as hover.
   const tip = L.tooltip({ direction: "top", offset: [0, -8] });
   const status = document.getElementById("status");
+  const statusText = document.getElementById("status-text");
+  const progress = document.getElementById("progress");
   const slider = document.getElementById("min-area");
   const label = document.getElementById("min-area-label");
   const count = (n) => n.toLocaleString("en-US");
@@ -205,10 +211,37 @@ __LEGEND__
     applyFilter();
   };
 
+  // fraction: 0 to 1 for a bar, or null for no bar.
+  const showStatus = (text, fraction) => {
+    status.hidden = false;
+    statusText.textContent = text;
+    progress.hidden = fraction === null;
+    if (fraction !== null) { progress.value = fraction; }
+  };
+  const showError = (text) => {
+    status.hidden = false;
+    statusText.textContent = text;
+    progress.hidden = true;
+  };
+
+  // Passes the bytes on and reports how far the download is.
+  const reportProgress = (total) => {
+    let received = 0;
+    return new TransformStream({
+      transform(chunk, controller) {
+        received += chunk.byteLength;
+        showStatus("Downloading the map…", total ? Math.min(received / total, 1) : null);
+        controller.enqueue(chunk);
+      },
+    });
+  };
+
   // The map file is gzip. Decompress it while it downloads.
   const load = (url) => fetch(url).then((response) => {
     if (!response.ok) { throw new Error(String(response.status)); }
-    return new Response(response.body.pipeThrough(new DecompressionStream("gzip"))).json();
+    const total = Number(response.headers.get("content-length")) || 0;
+    const body = response.body.pipeThrough(reportProgress(total));
+    return new Response(body.pipeThrough(new DecompressionStream("gzip"))).json();
   });
 
   slider.addEventListener("input", applyFilter);
@@ -216,12 +249,20 @@ __LEGEND__
   if (DATA.areas) {
     draw({ areas: DATA.areas });
   } else {
+    showStatus("Loading the map…", null);
     load(DATA.source)
-      .then(draw)
-      .catch(() => {
-        status.hidden = false;
-        status.textContent = "Could not load the map data.";
-      });
+      .then((payload) => {
+        const n = payload.areas.reduce((sum, area) => sum + area.places.length, 0);
+        showStatus("Drawing " + count(n) + " polygons…", null);
+        // Wait for a paint, so the message shows before the slow part starts.
+        return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
+          .then(() => payload);
+      })
+      .then((payload) => {
+        draw(payload);
+        status.hidden = true;
+      })
+      .catch(() => showError("Could not load the map data."));
   }
   window.landuseApp = { map, layer, slider, thresholdFor, applyFilter, units: () => units };
 })();
