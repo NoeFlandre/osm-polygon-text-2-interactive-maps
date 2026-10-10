@@ -1,9 +1,9 @@
 """Render places as one interactive page, and as summary text and tables.
 
-Public functions: `map_document`, `site_page`, `area_payload`, `area_json`,
+Public functions: `map_document`, `site_page`, `area_payload`, `map_json`,
 `summary_table`, `stats_markdown`. The page is one HTML file. Leaflet draws
-it. The page reads the data of one area at a time, either inline or from a
-JSON file next to the page.
+it. The page reads the data of every area from one JSON file next to the page,
+or from data inside the page.
 """
 
 from __future__ import annotations
@@ -64,16 +64,12 @@ def map_document(
 ) -> str:
     """Return one page that shows one area. The data is inside the page."""
     area = area_payload(name, places, len(places) if total is None else total)
-    return _page({"area": area, "areas": None, "start": None})
+    return _page({"areas": [area], "limit": None})
 
 
-def site_page(areas: Sequence[Mapping[str, Any]], start: str) -> str:
-    """Return the site page. It lists the areas, and loads one at a time.
-
-    Each entry holds `name`, `file` (a path next to the page), `total` and `shown`.
-    `start` is the area name that the page shows first.
-    """
-    return _page({"area": None, "areas": list(areas), "start": start})
+def site_page(source: str) -> str:
+    """Return the site page. It fetches the map data from `source`, a path next to the page."""
+    return _page({"source": source})
 
 
 def area_payload(name: str, places: Sequence[Place], total: int) -> dict[str, Any]:
@@ -86,8 +82,9 @@ def area_payload(name: str, places: Sequence[Place], total: int) -> dict[str, An
     }
 
 
-def area_json(payload: Mapping[str, Any]) -> str:
-    """Return the area payload as compact JSON, for a file the page loads."""
+def map_json(areas: Sequence[Mapping[str, Any]], limit: int | None) -> str:
+    """Return the data of every area as compact JSON. `limit` is the cap per area."""
+    payload = {"limit": limit, "areas": list(areas)}
     return json.dumps(
         payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False
     )

@@ -22,16 +22,11 @@ html, body { margin: 0; height: 100%; }
   font: 13px/1.4 system-ui, sans-serif; color: #0f172a;
 }
 .panel { top: 12px; left: 56px; width: 270px; }
-.panel label { display: block; margin-top: 6px; }
-.panel input[type=text], .panel input[type=search] {
-  box-sizing: border-box; width: 100%; padding: 5px 7px; font: inherit;
-  border: 1px solid #cbd5e1; border-radius: 6px;
-}
 .panel .stats { display: flex; justify-content: space-between; margin: 8px 0; }
 .panel .stats b { font-size: 16px; }
 .panel .status { color: #475569; min-height: 1.4em; }
+.panel label { display: block; margin-top: 6px; }
 .panel input[type=range] { width: 100%; margin: 4px 0 0; }
-.panel.single .picker { display: none; }
 .legend { bottom: 36px; right: 12px; }
 .legend-title { font-weight: 600; margin-bottom: 4px; }
 .legend .row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
@@ -40,14 +35,8 @@ html, body { margin: 0; height: 100%; }
 </head>
 <body>
 <div id="map"></div>
-<div class="panel" id="panel">
-  <div class="picker">
-    <label for="area-search">Area</label>
-    <input id="area-search" type="search" list="area-list" autocomplete="off"
-           placeholder="Type an area, for example Albania">
-    <datalist id="area-list"></datalist>
-  </div>
-  <div class="status" id="status"></div>
+<div class="panel">
+  <div class="status" id="status">Loading the areas…</div>
   <div class="stats">
     <div><b id="stat-polygons">0</b> polygons</div>
     <div><b id="stat-yes">0</b> yes labels</div>
@@ -70,13 +59,10 @@ __LEGEND__
   const status = document.getElementById("status");
   const slider = document.getElementById("min-area");
   const label = document.getElementById("min-area-label");
-  const search = document.getElementById("area-search");
-  const list = document.getElementById("area-list");
   const count = (n) => n.toLocaleString("en-US");
 
   let units = [];
   let maxArea = 1;
-  let shownName = "";
 
   const thresholdFor = (value) => (Number(value) <= 0
     ? 0 : Math.pow(maxArea, Number(value) / Number(slider.max)));
@@ -97,7 +83,7 @@ __LEGEND__
     return { polygons, yes, no, threshold };
   };
 
-  const makeUnit = (place) => {
+  const makeUnit = (place, region) => {
     const polygon = L.geoJSON({ type: "Feature", geometry: place.polygon, properties: {} }, {
       style: { fillColor: place.color, color: place.color, weight: 1, fillOpacity: 0.5 },
     });
@@ -109,49 +95,44 @@ __LEGEND__
       radius: DATA.hit.radius, stroke: false, fill: true, fillOpacity: DATA.hit.opacity,
     });
     marker.bindTooltip(place.tip);
-    return { polygon, marker, area: place.area, yes: place.yes, no: place.no };
+    return { polygon, marker, area: place.area, yes: place.yes, no: place.no, region };
   };
 
-  const draw = (area) => {
-    units = area.places.map(makeUnit);
+  // payload: { areas: [...], limit: number or null }. Each area has name, total, bounds, places.
+  const draw = (payload) => {
+    units = [];
+    let total = 0;
+    const bounds = [];
+    for (const area of payload.areas) {
+      total += area.total;
+      if (area.bounds) { bounds.push(area.bounds); }
+      for (const place of area.places) { units.push(makeUnit(place, area.name)); }
+    }
     maxArea = units.reduce((m, u) => Math.max(m, u.area), 1);
-    shownName = area.name;
-    if (area.bounds) { map.fitBounds(area.bounds); }
+    if (bounds.length) {
+      map.fitBounds([
+        [Math.min(...bounds.map((b) => b[0][0])), Math.min(...bounds.map((b) => b[0][1]))],
+        [Math.max(...bounds.map((b) => b[1][0])), Math.max(...bounds.map((b) => b[1][1]))],
+      ]);
+    }
     applyFilter();
-    status.textContent = area.name + ": " + count(area.places.length) + " of "
-      + count(area.total) + " polygons" + (area.places.length < area.total ? " (sample)" : "");
+    status.textContent = count(payload.areas.length) + " areas · "
+      + count(units.length) + " of " + count(total) + " polygons"
+      + (payload.limit ? " (up to " + count(payload.limit) + " per area)" : "");
   };
 
-  const load = (entry) => {
-    status.textContent = "Loading " + entry.name + "…";
-    fetch(entry.file)
+  slider.addEventListener("input", applyFilter);
+
+  if (DATA.areas) {
+    draw({ areas: DATA.areas, limit: DATA.limit });
+  } else {
+    fetch(DATA.source)
       .then((response) => {
         if (!response.ok) { throw new Error(String(response.status)); }
         return response.json();
       })
       .then(draw)
-      .catch(() => { status.textContent = "Could not load " + entry.name + "."; });
-  };
-
-  slider.addEventListener("input", applyFilter);
-
-  if (DATA.area) {
-    document.getElementById("panel").classList.add("single");
-    draw(DATA.area);
-  } else {
-    const byName = new Map(DATA.areas.map((entry) => [entry.name, entry]));
-    for (const entry of DATA.areas) {
-      const option = document.createElement("option");
-      option.value = entry.name;
-      list.appendChild(option);
-    }
-    search.addEventListener("change", () => {
-      const entry = byName.get(search.value.trim());
-      if (entry && entry.name !== shownName) { load(entry); }
-      if (!entry) { status.textContent = "Pick an area from the list."; }
-    });
-    search.value = DATA.start;
-    load(byName.get(DATA.start));
+      .catch(() => { status.textContent = "Could not load the map data."; });
   }
   window.landuseApp = { map, layer, slider, thresholdFor, applyFilter, units: () => units };
 })();

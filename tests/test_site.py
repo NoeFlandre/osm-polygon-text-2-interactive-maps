@@ -1,48 +1,60 @@
+import json
+
 import pytest
 
 from landuse_map import site
-from landuse_map.site import MAX_POLYGONS, build_site, display_name
+from landuse_map.site import MAX_POLYGONS_PER_AREA, build_site, display_name
 
 REGION = "testland-latest"
 
 
-def test_build_site_writes_the_page_one_data_file_and_the_space_readme(tmp_path):
+def read_map(out):
+    return json.loads((out / "data" / "map.json").read_text(encoding="utf-8"))
+
+
+def test_build_site_writes_the_page_the_map_file_and_the_space_readme(tmp_path):
     out = tmp_path / "site"
     page = build_site(out, [REGION], sample_size=None)
 
     assert page == out / "index.html"
     assert page.read_text(encoding="utf-8").startswith("<!DOCTYPE html>")
-    assert (out / "data" / f"{REGION}.json").exists()
+    assert (out / "data" / "map.json").exists()
     readme = (out / "README.md").read_text(encoding="utf-8")
     assert "sdk: static" in readme
     assert "Hover over a polygon" in readme
 
 
-def test_site_page_lists_the_area_by_its_english_name(tmp_path):
+def test_the_page_fetches_the_map_file_and_has_no_area_picker(tmp_path):
     out = tmp_path / "site"
     build_site(out, [REGION], sample_size=None)
     html = (out / "index.html").read_text(encoding="utf-8")
-    assert '"name": "Testland"' in html
-    assert '"file": "data/testland-latest.json"' in html
-    assert '"start": "Testland"' in html or '"start":"Testland"' in html
+    assert '"source": "data/map.json"' in html
+    assert "area-search" not in html
+    assert "area-list" not in html
 
 
-def test_area_file_holds_the_capped_sample(tmp_path):
-    import json
+def test_map_file_holds_every_area_by_its_english_name(tmp_path):
+    out = tmp_path / "site"
+    build_site(out, [REGION], sample_size=None)
+    payload = read_map(out)
+    assert [area["name"] for area in payload["areas"]] == ["Testland"]
+    assert payload["areas"][0]["total"] == 3
 
+
+def test_every_area_is_capped_by_the_sample(tmp_path):
     out = tmp_path / "site"
     build_site(out, [REGION], sample_size=2)
-    payload = json.loads((out / "data" / f"{REGION}.json").read_text(encoding="utf-8"))
-    assert payload["name"] == "Testland"
-    assert payload["total"] == 3
-    assert len(payload["places"]) == 2
+    payload = read_map(out)
+    assert payload["limit"] == 2
+    assert len(payload["areas"][0]["places"]) == 2
+    assert payload["areas"][0]["total"] == 3
 
 
 def test_build_site_without_areas_uses_every_area_in_the_dataset(tmp_path, monkeypatch):
     monkeypatch.setattr(site, "list_areas", lambda: [REGION])
     out = tmp_path / "site"
     build_site(out, sample_size=None)
-    assert (out / "data" / f"{REGION}.json").exists()
+    assert [area["name"] for area in read_map(out)["areas"]] == ["Testland"]
 
 
 def test_build_site_reports_progress_per_area(tmp_path):
@@ -56,8 +68,8 @@ def test_build_site_refuses_an_empty_area_list(tmp_path):
         build_site(tmp_path / "site", [], sample_size=None)
 
 
-def test_default_cap_keeps_large_areas_loadable():
-    assert MAX_POLYGONS == 10000
+def test_default_cap_is_one_hundred_polygons_per_area():
+    assert MAX_POLYGONS_PER_AREA == 100
 
 
 @pytest.mark.parametrize(
