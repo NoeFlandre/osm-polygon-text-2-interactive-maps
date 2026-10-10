@@ -32,6 +32,17 @@ html, body { margin: 0; height: 100%; }
 .legend-title { font-weight: 600; margin-bottom: 4px; }
 .legend .row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
 .legend .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; }
+.about {
+  position: absolute; z-index: 1000; left: 12px; bottom: 12px; width: 300px;
+  max-width: calc(100vw - 24px); max-height: 45vh; overflow-y: auto;
+  background: #fff; border-radius: 10px; padding: 10px 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
+  font: 13px/1.4 system-ui, sans-serif; color: #0f172a;
+}
+.about summary { font-weight: 600; cursor: pointer; }
+.about p, .about ul { margin: 6px 0; }
+.about ul { padding-left: 18px; }
+.about a { color: #0f766e; }
 </style>
 </head>
 <body>
@@ -50,6 +61,19 @@ html, body { margin: 0; height: 100%; }
   <input id="min-area" type="range" min="0" max="1000" step="1" value="0">
 </div>
 __LEGEND__
+<details class="about" open>
+  <summary>About this map</summary>
+  <p>This map shows OpenStreetMap polygons from every area of the dataset. A polygon is an area on the map. Each area shows at most 100 random polygons.</p>
+  <p>A model read each sentence of the polygon text. The text comes from OpenStreetMap description tags. The model gave each sentence a label:</p>
+  <ul>
+    <li><b>yes</b>: the sentence is about land use.</li>
+    <li><b>no</b>: the sentence is not about land use.</li>
+    <li><b>failed</b>: the model answer cannot be read.</li>
+    <li><b>not split</b>: the source did not split the text into sentences.</li>
+  </ul>
+  <p>Hover over a polygon to read its text. Use the slider to hide small polygons.</p>
+  <p>Data: <a href="https://huggingface.co/datasets/NoeFlandre/osm-polygon-description-tag-landuse" target="_blank" rel="noopener">osm-polygon-description-tag-landuse</a> (ODbL). Code: <a href="https://github.com/NoeFlandre/osm-polygon-text-2-interactive-maps" target="_blank" rel="noopener">GitHub</a>.</p>
+</details>
 <script src="__LEAFLET_JS__" integrity="__LEAFLET_JS_SRI__" crossorigin=""></script>
 <script>const DATA = __DATA__;</script>
 <script>
