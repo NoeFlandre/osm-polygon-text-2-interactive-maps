@@ -83,7 +83,7 @@ def test_every_area_is_on_one_map_without_a_picker(site_url):
         try:
             assert page.locator("#area-search").count() == 0
             assert page.locator("input[type=checkbox]").count() == 0
-            assert page.inner_text("#status").startswith("2 areas")
+            assert not page.is_visible("#status")
             assert len(page.evaluate("window.landuseApp.units()")) == len(expected)
             assert page.inner_text("#stat-polygons") == f"{len(expected):,}"
         finally:

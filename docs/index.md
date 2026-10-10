@@ -4,7 +4,7 @@ This page shows OpenStreetMap polygons. Every area of the dataset is on one map.
 
 ## Use the page
 
-1. Open the page and wait for the data to load. The panel shows the number of areas and polygons.
+1. Open the page. Every area is on one map.
 2. Hover over a polygon to see its labels and text. A label is *yes* if a sentence is relevant for land use. A label is *no* if it is not. A label is *failed* if the model answer cannot be read. A label is *not split* if the source did not split the text into sentences.
 3. Use the slider to hide polygons smaller than a chosen area. The slider scale is logarithmic.
 4. Read the counts. The panel shows the polygons on the map, and the yes and no labels among them.
@@ -22,7 +22,7 @@ The hover text uses the `description` tag of the polygon. The text can be in any
 
 ## Limits
 
-- Each area shows at most 100 polygons. Larger areas use a random sample. The status line says how many polygons are on the map.
+- Each area shows at most 100 polygons. Larger areas use a random sample. The panel shows how many polygons are on the map.
 - The page loads one data file for all areas. The first load can take some time.
 
 ## Data
