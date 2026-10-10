@@ -1,3 +1,4 @@
+import gzip
 import json
 
 import pytest
@@ -9,7 +10,7 @@ REGION = "testland-latest"
 
 
 def read_map(out):
-    return json.loads((out / "data" / "map.json").read_text(encoding="utf-8"))
+    return json.loads(gzip.decompress((out / "data" / "map.json.gz").read_bytes()))
 
 
 def test_build_site_writes_the_page_the_map_file_and_the_space_readme(tmp_path):
@@ -18,7 +19,7 @@ def test_build_site_writes_the_page_the_map_file_and_the_space_readme(tmp_path):
 
     assert page == out / "index.html"
     assert page.read_text(encoding="utf-8").startswith("<!DOCTYPE html>")
-    assert (out / "data" / "map.json").exists()
+    assert (out / "data" / "map.json.gz").exists()
     readme = (out / "README.md").read_text(encoding="utf-8")
     assert "sdk: static" in readme
     assert "Hover over a polygon" in readme
@@ -28,7 +29,7 @@ def test_the_page_fetches_the_map_file_and_has_no_area_picker(tmp_path):
     out = tmp_path / "site"
     build_site(out, [REGION], sample_size=None)
     html = (out / "index.html").read_text(encoding="utf-8")
-    assert '"source": "data/map.json"' in html
+    assert '"source": "data/map.json.gz"' in html
     assert "area-search" not in html
     assert "area-list" not in html
 

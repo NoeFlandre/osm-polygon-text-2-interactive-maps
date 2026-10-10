@@ -2,7 +2,7 @@
 
 Public functions: `map_document`, `site_page`, `area_payload`, `map_json`,
 `summary_table`, `stats_markdown`. The page is one HTML file. Leaflet draws
-it. The page reads the data of every area from one JSON file next to the page,
+it. The page reads the data of every area from one gzipped JSON file next to the page,
 or from data inside the page.
 """
 
