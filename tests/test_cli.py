@@ -1,3 +1,4 @@
+import gzip
 from pathlib import Path
 
 import pytest
@@ -60,7 +61,7 @@ def test_site_writes_the_page_and_the_map_file(tmp_path, capsys):
     assert main(["site", str(out), "--areas", REGION]) == 0
     assert (out / "index.html").exists()
     assert (out / "README.md").exists()
-    assert (out / "data" / "map.json").exists()
+    assert (out / "data" / "map.json.gz").exists()
     assert "wrote" in capsys.readouterr().out
 
 
@@ -69,7 +70,7 @@ def test_site_sample_option_caps_each_area(tmp_path):
 
     out = tmp_path / "site"
     main(["site", str(out), "--areas", REGION, "--sample", "1"])
-    payload = json.loads((out / "data" / "map.json").read_text(encoding="utf-8"))
+    payload = json.loads(gzip.decompress((out / "data" / "map.json.gz").read_bytes()))
     assert len(payload["areas"][0]["places"]) == 1
 
 

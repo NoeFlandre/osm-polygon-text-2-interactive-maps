@@ -1,12 +1,13 @@
 """Static site: one page that shows every area of the dataset on one map.
 
 The site runs on a free Hugging Face static Space. The page fetches one data
-file, `data/map.json`, with every area in it. A random sample of each area is
+file, `data/map.json.gz`, with every area in it. A random sample of each area is
 kept, so the file stays small enough to load in a browser.
 """
 
 from __future__ import annotations
 
+import gzip
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -16,7 +17,7 @@ from landuse_map.render import area_payload, map_json, site_page
 
 # Most polygons kept per area. Every area appears on the map.
 MAX_POLYGONS_PER_AREA = 100
-MAP_FILE = "data/map.json"
+MAP_FILE = "data/map.json.gz"
 NAME_OVERRIDES = {
     "bosnia-herzegovina": "Bosnia and Herzegovina",
     "macedonia": "North Macedonia",
@@ -57,7 +58,7 @@ def build_site(
     sample_size: int | None = MAX_POLYGONS_PER_AREA,
     progress: Callable[[str], None] | None = None,
 ) -> Path:
-    """Write index.html, data/map.json with every area, and the Space README.
+    """Write index.html, data/map.json.gz with every area, and the Space README.
 
     `areas` defaults to every area in the dataset. Return the page path.
     """
@@ -68,7 +69,9 @@ def build_site(
     records.sort(key=lambda record: record["name"])
     out.mkdir(parents=True, exist_ok=True)
     (out / MAP_FILE).parent.mkdir(parents=True, exist_ok=True)
-    (out / MAP_FILE).write_text(map_json(records, sample_size), encoding="utf-8")
+    data = map_json(records, sample_size).encode("utf-8")
+    # mtime=0 keeps the file the same for the same input.
+    (out / MAP_FILE).write_bytes(gzip.compress(data, compresslevel=9, mtime=0))
     page = out / "index.html"
     page.write_text(site_page(MAP_FILE), encoding="utf-8")
     (out / "README.md").write_text(SPACE_README, encoding="utf-8")

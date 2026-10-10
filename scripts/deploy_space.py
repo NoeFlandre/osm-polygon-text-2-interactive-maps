@@ -14,7 +14,7 @@ from pathlib import Path
 from huggingface_hub import HfApi
 
 DEFAULT_REPO = "NoeFlandre/osm-polygon-text-2-interactive-maps"
-MAP_FILE = "data/map.json"
+MAP_FILE = "data/map.json.gz"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -53,11 +53,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 def stale_area_files(api: HfApi, repo_id: str) -> list[str]:
     """Return the data files of earlier builds. The map file is kept."""
     files = api.list_repo_files(repo_id=repo_id, repo_type="space")
-    return [
-        name
-        for name in files
-        if name.startswith("data/") and name.endswith(".json") and name != MAP_FILE
-    ]
+    return [name for name in files if name.startswith("data/") and name != MAP_FILE]
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ import re
 import threading
 from collections import Counter
 from functools import partial
+from html import unescape
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -19,18 +20,16 @@ pytestmark = [pytest.mark.e2e, pytest.mark.network]
 
 AREAS = ["albania-latest", "montenegro-latest"]
 
-# One row per polygon on the map, with its tooltip text, fill and marker position.
+# One row per polygon on the map, with its tooltip text, fill and hit point.
 UNITS_JS = """
 () => {
   const app = window.landuseApp;
   const box = app.map.getContainer().getBoundingClientRect();
-  const plain = (html) => html.replace(/<[^>]+>/g, " ").replace(/\\s+/g, " ").trim();
   return app.units().map((u) => {
-    const path = u.polygon.getLayers()[0];
-    const point = app.map.latLngToContainerPoint(u.marker.getLatLng());
+    const point = app.map.latLngToContainerPoint(u.hit);
     return {
-      text: plain(String(path.getTooltip().getContent())),
-      fill: path.options.fillColor,
+      tip: u.tip,
+      fill: u.polygon.options.fillColor,
       x: box.left + point.x,
       y: box.top + point.y,
     };
@@ -67,9 +66,14 @@ def open_site(playwright, url):
     return browser, page
 
 
+def squash(html):
+    """Plain text of an HTML snippet, with all whitespace removed."""
+    return re.sub(r"\s+", "", unescape(re.sub(r"<[^>]+>", "", html)))
+
+
 def expected_text(place):
     """The tooltip text that the map should show for one polygon."""
-    return " ".join(re.sub(r"<[^>]+>", " ", _tooltip_html(place)).split())
+    return squash(_tooltip_html(place))
 
 
 def places_of(areas):
@@ -84,31 +88,27 @@ def test_every_area_is_on_one_map_without_a_picker(site_url):
             assert page.locator("#area-search").count() == 0
             assert page.locator("input[type=checkbox]").count() == 0
             assert not page.is_visible("#status")
-            assert len(page.evaluate("window.landuseApp.units()")) == len(expected)
+            assert page.evaluate("window.landuseApp.units().length") == len(expected)
             assert page.inner_text("#stat-polygons") == f"{len(expected):,}"
         finally:
             browser.close()
 
 
-def test_every_polygon_and_marker_shows_text_on_hover(site_url):
+def test_every_polygon_shows_its_text_on_hover(site_url):
     expected = places_of(AREAS)
     with sync_playwright() as p:
         browser, page = open_site(p, site_url)
         try:
             units = page.evaluate(UNITS_JS)
             assert len(units) == len(expected)
-            assert [u for u in units if not u["text"]] == []
-            # Hit markers must stay invisible. Stacked opacity would tint the map.
-            assert page.evaluate(
-                "() => window.landuseApp.units().every(u => u.marker.options.fillOpacity === 0)"
-            )
-            assert sorted(u["text"] for u in units) == sorted(
+            assert sorted(squash(u["tip"]) for u in units) == sorted(
                 expected_text(q) for q in expected
             )
             assert Counter(u["fill"] for u in units) == Counter(
                 _color(q) for q in expected
             )
 
+            allowed = {expected_text(q) for q in expected}
             silent = []
             for unit in units:
                 page.mouse.move(0, 0)
@@ -116,12 +116,12 @@ def test_every_polygon_and_marker_shows_text_on_hover(site_url):
                 tip = page.locator(".leaflet-tooltip").first
                 try:
                     tip.wait_for(state="visible", timeout=1500)
-                    shown = tip.inner_text().strip()
+                    shown = squash(tip.inner_text())
                 except PlaywrightTimeout:
                     shown = ""
-                if not shown:
+                if shown not in allowed:
                     silent.append((unit["x"], unit["y"]))
-            assert silent == [], f"{len(silent)} hit markers showed no tooltip"
+            assert silent == [], f"{len(silent)} hit points showed no known tooltip"
         finally:
             browser.close()
 
@@ -150,8 +150,8 @@ def test_slider_hides_small_polygons_and_updates_the_stats(site_url):
             assert (
                 page.inner_text("#stat-no") == f"{sum(q.count('no') for q in shown):,}"
             )
-            # The map shows exactly the polygons that the stats count: one polygon and one marker each.
+            # The map holds exactly the polygons that the stats count.
             layers = page.evaluate("() => window.landuseApp.layer.getLayers().length")
-            assert layers == 2 * len(shown)
+            assert layers == len(shown)
         finally:
             browser.close()

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from landuse_map.data import load_region
 from landuse_map.render import map_document, stats_markdown, summary_table
-from landuse_map.site import MAX_POLYGONS_PER_AREA, build_site, display_name
+from landuse_map.site import MAP_FILE, MAX_POLYGONS_PER_AREA, build_site, display_name
 
 
 def positive_int(text: str) -> int:
@@ -91,7 +91,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _run(args: argparse.Namespace) -> int:
     if args.command == "site":
         page = build_site(args.output, args.areas, args.sample, progress=print)
-        print(f"wrote {page} and {args.output / 'data' / 'map.json'}")
+        print(f"wrote {page} and {args.output / MAP_FILE}")
         return 0
 
     sample = load_region(args.region, sample_size=args.sample)

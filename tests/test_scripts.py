@@ -99,6 +99,7 @@ def test_deploy_deletes_old_area_files_but_keeps_the_map(monkeypatch, tmp_path):
                 "README.md",
                 "index.html",
                 "data/map.json",
+                "data/map.json.gz",
                 "data/albania-latest.json",
                 "data/montenegro-latest.json",
             ]
@@ -118,4 +119,8 @@ def test_deploy_deletes_old_area_files_but_keeps_the_map(monkeypatch, tmp_path):
         "upload_folder",
     ]
     deleted = calls[1][1]["delete_patterns"]
-    assert deleted == ["data/albania-latest.json", "data/montenegro-latest.json"]
+    assert deleted == [
+        "data/map.json",
+        "data/albania-latest.json",
+        "data/montenegro-latest.json",
+    ]
