@@ -135,6 +135,8 @@ def test_the_page_explains_the_map(site_url):
             text = about.inner_text()
             assert "About this map" in text
             assert "Hover over a polygon" in text
+            assert "This map is a sample for now." in text
+            assert f"It shows {len(places_of(AREAS)):,} of" in text
             assert about.locator("a").count() == 2
         finally:
             browser.close()

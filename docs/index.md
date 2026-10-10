@@ -22,7 +22,7 @@ The hover text uses the `description` tag of the polygon. The text can be in any
 
 ## Limits
 
-- Each area shows at most 100 polygons. Larger areas use a random sample. The panel shows how many polygons are on the map.
+- This map is a sample for now. Each area shows at most 100 random polygons. The About box and the panel say how many polygons are on the map.
 - The page loads one data file for all areas. While it loads, the panel shows a message and a progress bar. The counts show dashes until the map is ready.
 
 ## Data

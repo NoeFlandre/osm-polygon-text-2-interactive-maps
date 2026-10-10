@@ -34,7 +34,8 @@ pinned: false
 license: mit
 ---
 
-Every area of the dataset is on one map. Hover over a polygon to see its land-use labels and text.
+This map is a sample for now. It shows at most 100 random polygons per area, from every area of the dataset.
+Hover over a polygon to see its land-use labels and text.
 The slider hides polygons below a chosen area. The panel counts the polygons on the map.
 
 Data: [osm-polygon-description-tag-landuse](https://huggingface.co/datasets/NoeFlandre/osm-polygon-description-tag-landuse) (ODbL).

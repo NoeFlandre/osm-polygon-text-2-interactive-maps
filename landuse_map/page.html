@@ -63,7 +63,7 @@ html, body { margin: 0; height: 100%; }
 __LEGEND__
 <details class="about" open>
   <summary>About this map</summary>
-  <p>This map shows OpenStreetMap polygons from every area of the dataset. A polygon is an area on the map. Each area shows at most 100 random polygons.</p>
+  <p><b>This map is a sample for now.</b> <span id="sample-note"></span> A polygon is an area on the map. Every area of the dataset is included, with at most 100 random polygons per area.</p>
   <p>A model read each sentence of the polygon text. The text comes from OpenStreetMap description tags. The model gave each sentence a label:</p>
   <ul>
     <li><b>yes</b>: the sentence is about land use.</li>
@@ -221,11 +221,15 @@ __LEGEND__
   const draw = (payload) => {
     units = [];
     const bounds = [];
+    let total = 0;
     for (const area of payload.areas) {
+      total += area.total;
       if (area.bounds) { bounds.push(area.bounds); }
       for (const place of area.places) { units.push(makeUnit(place)); }
     }
     maxArea = units.reduce((m, u) => Math.max(m, u.area), 1);
+    document.getElementById("sample-note").textContent =
+      "It shows " + count(units.length) + " of " + count(total) + " polygons.";
     if (bounds.length) {
       map.fitBounds([
         [Math.min(...bounds.map((b) => b[0][0])), Math.min(...bounds.map((b) => b[0][1]))],
