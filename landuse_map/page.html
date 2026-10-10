@@ -92,7 +92,7 @@ __LEGEND__
     path.on("mouseover", () => path.setStyle({ weight: 3, fillOpacity: 0.75 }));
     path.on("mouseout", () => path.setStyle({ weight: 1, fillOpacity: 0.5 }));
     const marker = L.circleMarker(place.hit, {
-      radius: DATA.hit.radius, stroke: false, fill: true, fillOpacity: DATA.hit.opacity,
+      radius: DATA.hit.radius, stroke: false, fill: true, fillOpacity: 0,
     });
     marker.bindTooltip(place.tip);
     return { polygon, marker, area: place.area, yes: place.yes, no: place.no, region };

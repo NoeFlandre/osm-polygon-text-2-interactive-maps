@@ -34,7 +34,6 @@ LEAFLET_JS_SRI = (
     "sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH"
 )
 HIT_RADIUS = 6
-HIT_OPACITY = 0.01
 # About 30 metres on the ground. Stored coordinates keep 1e-5 degrees (about 1 metre).
 SIMPLIFY_TOLERANCE = 3e-4
 COORD_DIGITS = 5
@@ -139,7 +138,7 @@ def stats_markdown(sample: RegionSample) -> str:
 def _page(data: dict[str, Any]) -> str:
     data = {
         "basemap": {"url": BASEMAP_URL, "attribution": BASEMAP_ATTR},
-        "hit": {"radius": HIT_RADIUS, "opacity": HIT_OPACITY},
+        "hit": {"radius": HIT_RADIUS},
         **data,
     }
     # Replace the data last. Its text must not be scanned for placeholders.
