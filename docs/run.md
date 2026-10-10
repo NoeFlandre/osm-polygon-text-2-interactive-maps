@@ -26,7 +26,7 @@ uv run landuse-map stats albania-latest --csv table.csv
 
 ## Build the site
 
-The site has one page and one data file for each area.
+The site has one page and one data file. The data file holds every area.
 
 ```bash
 uv run landuse-map site site-out --areas albania-latest montenegro-latest
@@ -34,9 +34,9 @@ uv run landuse-map site site-out --areas albania-latest montenegro-latest
 
 Leave out `--areas` to build every area. That takes a long time, because the dataset has 386 areas.
 
-- Add `--sample 500` to cap each area at 500 polygons. The default cap is 10,000.
+- Add `--sample 500` to cap each area at 500 polygons. The default cap is 100.
 
-Serve the site folder with any web server, for example `uv run python -m http.server -d site-out`. Then open the printed address. Opening `index.html` from the disk does not work, because the page loads its data files.
+Serve the site folder with any web server, for example `uv run python -m http.server -d site-out`. Then open the printed address. Opening `index.html` from the disk does not work, because the page loads its data file.
 
 ## Check the code
 

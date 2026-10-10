@@ -22,6 +22,7 @@ from landuse_map.render import (
     _tooltip_html,
     area_payload,
     map_document,
+    map_json,
     stats_markdown,
     summary_table,
 )
@@ -95,11 +96,11 @@ def test_area_payload_names_the_area_and_its_total():
 
 def test_bounds_cover_all_places():
     data = page_data(map_document(load_region(REGION).places))
-    assert data["area"]["bounds"] == [[0.0, 0.0], [1.0, 5.0]]
+    assert data["areas"][0]["bounds"] == [[0.0, 0.0], [1.0, 5.0]]
 
 
 def test_bounds_are_none_without_places():
-    assert page_data(map_document([]))["area"]["bounds"] is None
+    assert page_data(map_document([]))["areas"][0]["bounds"] is None
 
 
 def test_basemap_is_the_openstreetmap_tile_server():
@@ -317,8 +318,6 @@ def test_area_file_rejects_a_nan_area():
 
     import pytest
 
-    from landuse_map.render import area_json
-
     nan_area = place(area_m2=math.nan)
     with pytest.raises(ValueError):
-        area_json(area_payload("Testland", [nan_area], total=1))
+        map_json([area_payload("Testland", [nan_area], total=1)], limit=None)

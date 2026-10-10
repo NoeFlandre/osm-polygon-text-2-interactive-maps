@@ -1,6 +1,7 @@
-"""Browser checks on the built site: hover text, colors, slider and area picker."""
+"""Browser checks on the built site: every area on one map, hover text, colors and slider."""
 
 import os
+import re
 import threading
 from collections import Counter
 from functools import partial
@@ -12,13 +13,13 @@ from playwright.sync_api import sync_playwright
 
 from landuse_map.data import YES, load_region
 from landuse_map.render import _color, _tooltip_html
-from landuse_map.site import build_site, display_name
+from landuse_map.site import build_site
 
 pytestmark = [pytest.mark.e2e, pytest.mark.network]
 
 AREAS = ["albania-latest", "montenegro-latest"]
 
-# One row per polygon unit, with its tooltip text, fill and marker position.
+# One row per polygon on the map, with its tooltip text, fill and marker position.
 UNITS_JS = """
 () => {
   const app = window.landuseApp;
@@ -67,30 +68,41 @@ def open_site(playwright, url):
 
 
 def expected_text(place):
-    """The tooltip text that the page should show for one polygon."""
-    import re
-
-    html = _tooltip_html(place)
-    return " ".join(re.sub(r"<[^>]+>", " ", html).split())
+    """The tooltip text that the map should show for one polygon."""
+    return " ".join(re.sub(r"<[^>]+>", " ", _tooltip_html(place)).split())
 
 
 def places_of(areas):
     return [p for area in areas for p in load_region(area).places]
 
 
+def test_every_area_is_on_one_map_without_a_picker(site_url):
+    expected = places_of(AREAS)
+    with sync_playwright() as p:
+        browser, page = open_site(p, site_url)
+        try:
+            assert page.locator("#area-search").count() == 0
+            assert page.locator("input[type=checkbox]").count() == 0
+            assert page.inner_text("#status").startswith("2 areas")
+            assert len(page.evaluate("window.landuseApp.units()")) == len(expected)
+            assert page.inner_text("#stat-polygons") == f"{len(expected):,}"
+        finally:
+            browser.close()
+
+
 def test_every_polygon_and_marker_shows_text_on_hover(site_url):
-    expected_places = places_of(AREAS[:1])
+    expected = places_of(AREAS)
     with sync_playwright() as p:
         browser, page = open_site(p, site_url)
         try:
             units = page.evaluate(UNITS_JS)
-            assert len(units) == len(expected_places)
+            assert len(units) == len(expected)
             assert [u for u in units if not u["text"]] == []
-            # Each hover text must match the text of its own polygon.
-            expected = [expected_text(q) for q in expected_places]
-            assert [u["text"] for u in units] == expected
+            assert sorted(u["text"] for u in units) == sorted(
+                expected_text(q) for q in expected
+            )
             assert Counter(u["fill"] for u in units) == Counter(
-                _color(q) for q in expected_places
+                _color(q) for q in expected
             )
 
             silent = []
@@ -111,7 +123,7 @@ def test_every_polygon_and_marker_shows_text_on_hover(site_url):
 
 
 def test_slider_hides_small_polygons_and_updates_the_stats(site_url):
-    expected = places_of(AREAS[:1])
+    expected = places_of(AREAS)
     with sync_playwright() as p:
         browser, page = open_site(p, site_url)
         try:
@@ -134,46 +146,8 @@ def test_slider_hides_small_polygons_and_updates_the_stats(site_url):
             assert (
                 page.inner_text("#stat-no") == f"{sum(q.count('no') for q in shown):,}"
             )
-        finally:
-            browser.close()
-
-
-def test_picking_another_area_replaces_the_polygons(site_url):
-    with sync_playwright() as p:
-        browser, page = open_site(p, site_url)
-        try:
-            assert page.inner_text("#status").startswith("Albania:")
-            page.fill("#area-search", display_name(AREAS[1]))
-            page.dispatch_event("#area-search", "change")
-            page.wait_for_function(
-                "n => window.landuseApp.units().length === n",
-                arg=len(places_of(AREAS[1:])),
-            )
-            assert page.inner_text("#status").startswith("Montenegro:")
-            assert page.inner_text("#stat-polygons") == f"{len(places_of(AREAS[1:])):,}"
-        finally:
-            browser.close()
-
-
-def test_the_picker_offers_every_area_as_a_suggestion(site_url):
-    with sync_playwright() as p:
-        browser, page = open_site(p, site_url)
-        try:
-            names = page.eval_on_selector_all(
-                "#area-list option", "els => els.map(e => e.value)"
-            )
-            assert names == sorted(display_name(a) for a in AREAS)
-            assert page.locator("input[type=checkbox]").count() == 0
-        finally:
-            browser.close()
-
-
-def test_an_unknown_area_name_gets_a_message(site_url):
-    with sync_playwright() as p:
-        browser, page = open_site(p, site_url)
-        try:
-            page.fill("#area-search", "Atlantis")
-            page.dispatch_event("#area-search", "change")
-            assert page.inner_text("#status") == "Pick an area from the list."
+            # The map shows exactly the polygons that the stats count: one polygon and one marker each.
+            layers = page.evaluate("() => window.landuseApp.layer.getLayers().length")
+            assert layers == 2 * len(shown)
         finally:
             browser.close()

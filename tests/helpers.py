@@ -12,7 +12,7 @@ def page_data(doc: str) -> dict:
 
 def page_places(doc: str) -> list[dict]:
     """Return the polygon records of a page that shows one area."""
-    return page_data(doc)["area"]["places"]
+    return page_data(doc)["areas"][0]["places"]
 
 
 def not_found_error():

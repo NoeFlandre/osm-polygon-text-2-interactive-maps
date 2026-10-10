@@ -79,3 +79,43 @@ def test_mutation_gate_fails_when_nothing_ran(tmp_path):
     stats = tmp_path / "stats.json"
     stats.write_text(json.dumps({"killed": 0, "survived": 0, "total": 0}))
     assert gate.main(["--min", "80", "--stats", str(stats)]) == 1
+
+
+deploy = load_script("deploy_space")
+
+
+def test_deploy_deletes_old_area_files_but_keeps_the_map(monkeypatch, tmp_path):
+    calls: list[tuple[str, dict]] = []
+
+    class FakeHub:
+        def __init__(self, token: str):
+            self.token = token
+
+        def create_repo(self, **kwargs):
+            calls.append(("create_repo", kwargs))
+
+        def list_repo_files(self, **kwargs):
+            return [
+                "README.md",
+                "index.html",
+                "data/map.json",
+                "data/albania-latest.json",
+                "data/montenegro-latest.json",
+            ]
+
+        def delete_files(self, **kwargs):
+            calls.append(("delete_files", kwargs))
+
+        def upload_folder(self, **kwargs):
+            calls.append(("upload_folder", kwargs))
+
+    monkeypatch.setattr(deploy, "HfApi", FakeHub)
+    monkeypatch.setenv("HF_TOKEN", "token")
+    assert deploy.main([str(tmp_path)]) == 0
+    assert [name for name, _ in calls] == [
+        "create_repo",
+        "delete_files",
+        "upload_folder",
+    ]
+    deleted = calls[1][1]["delete_patterns"]
+    assert deleted == ["data/albania-latest.json", "data/montenegro-latest.json"]
