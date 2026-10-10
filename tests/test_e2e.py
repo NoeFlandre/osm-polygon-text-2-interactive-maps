@@ -126,6 +126,20 @@ def test_every_polygon_shows_its_text_on_hover(site_url):
             browser.close()
 
 
+def test_the_page_explains_the_map(site_url):
+    with sync_playwright() as p:
+        browser, page = open_site(p, site_url)
+        try:
+            about = page.locator(".about")
+            assert about.is_visible()
+            text = about.inner_text()
+            assert "About this map" in text
+            assert "Hover over a polygon" in text
+            assert about.locator("a").count() == 2
+        finally:
+            browser.close()
+
+
 def test_a_loading_message_shows_until_the_map_is_drawn(site_url):
     expected = places_of(AREAS)
     held = []
