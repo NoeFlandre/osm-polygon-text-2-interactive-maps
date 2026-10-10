@@ -24,7 +24,7 @@ html, body { margin: 0; height: 100%; }
 .panel { top: 12px; left: 56px; width: 270px; }
 .panel .stats { display: flex; justify-content: space-between; margin: 8px 0; }
 .panel .stats b { font-size: 16px; }
-.panel .status { color: #475569; min-height: 1.4em; }
+.panel .status { color: #475569; }
 .panel label { display: block; margin-top: 6px; }
 .panel input[type=range] { width: 100%; margin: 4px 0 0; }
 .legend { bottom: 36px; right: 12px; }
@@ -36,7 +36,7 @@ html, body { margin: 0; height: 100%; }
 <body>
 <div id="map"></div>
 <div class="panel">
-  <div class="status" id="status">Loading the areas…</div>
+  <div class="status" id="status" hidden></div>
   <div class="stats">
     <div><b id="stat-polygons">0</b> polygons</div>
     <div><b id="stat-yes">0</b> yes labels</div>
@@ -98,13 +98,11 @@ __LEGEND__
     return { polygon, marker, area: place.area, yes: place.yes, no: place.no, region };
   };
 
-  // payload: { areas: [...], limit: number or null }. Each area has name, total, bounds, places.
+  // payload: { areas: [...] }. Each area has name, bounds and places.
   const draw = (payload) => {
     units = [];
-    let total = 0;
     const bounds = [];
     for (const area of payload.areas) {
-      total += area.total;
       if (area.bounds) { bounds.push(area.bounds); }
       for (const place of area.places) { units.push(makeUnit(place, area.name)); }
     }
@@ -116,15 +114,12 @@ __LEGEND__
       ]);
     }
     applyFilter();
-    status.textContent = count(payload.areas.length) + " areas · "
-      + count(units.length) + " of " + count(total) + " polygons"
-      + (payload.limit ? " (up to " + count(payload.limit) + " per area)" : "");
   };
 
   slider.addEventListener("input", applyFilter);
 
   if (DATA.areas) {
-    draw({ areas: DATA.areas, limit: DATA.limit });
+    draw({ areas: DATA.areas });
   } else {
     fetch(DATA.source)
       .then((response) => {
@@ -132,7 +127,10 @@ __LEGEND__
         return response.json();
       })
       .then(draw)
-      .catch(() => { status.textContent = "Could not load the map data."; });
+      .catch(() => {
+        status.hidden = false;
+        status.textContent = "Could not load the map data.";
+      });
   }
   window.landuseApp = { map, layer, slider, thresholdFor, applyFilter, units: () => units };
 })();
