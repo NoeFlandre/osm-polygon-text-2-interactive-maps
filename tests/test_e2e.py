@@ -98,6 +98,10 @@ def test_every_polygon_and_marker_shows_text_on_hover(site_url):
             units = page.evaluate(UNITS_JS)
             assert len(units) == len(expected)
             assert [u for u in units if not u["text"]] == []
+            # Hit markers must stay invisible. Stacked opacity would tint the map.
+            assert page.evaluate(
+                "() => window.landuseApp.units().every(u => u.marker.options.fillOpacity === 0)"
+            )
             assert sorted(u["text"] for u in units) == sorted(
                 expected_text(q) for q in expected
             )

@@ -83,7 +83,7 @@ def test_record_has_the_polygon_geometry_and_a_hit_point_inside_it():
 
 
 def test_hit_markers_are_small_and_nearly_transparent():
-    assert page_data(map_document([only(YES)]))["hit"] == {"radius": 6, "opacity": 0.01}
+    assert page_data(map_document([only(YES)]))["hit"] == {"radius": 6}
 
 
 def test_area_payload_names_the_area_and_its_total():
