@@ -54,7 +54,6 @@ CATEGORY_COLOR = {
     "none": "#94a3b8",
 }
 
-# The page template. It holds placeholders that _page fills in.
 PAGE = resources.files("landuse_map").joinpath("page.html").read_text(encoding="utf-8")
 
 
